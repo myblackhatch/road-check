@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="Pre-drive road check: FL511 cameras in driving order with reported delays.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Road Check">
+<title>Road Check</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#131d2f;--panel2:#19263c;--border:#2c3b54;--text:#f4f7fd;--muted:#afbdd1;--bright:#62d2ef;--green:#4fd39a;--yellow:#f3c548;--red:#ff6b61;--grey:#56657d}
+*{box-sizing:border-box}
+body{margin:0;color:var(--text);background:var(--bg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+a{color:#a3e9ff}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--bright);outline-offset:2px}
+.shell{width:min(1100px,calc(100% - 24px));margin:auto}
+header{background:rgba(11,16,32,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(6px);padding-top:env(safe-area-inset-top)}
+.top{display:flex;align-items:center;gap:8px;padding:10px 0 8px}
+.brand{font-weight:800;letter-spacing:.03em;margin-right:auto;display:flex;align-items:center;gap:8px}
+.brand b{background:#29435f;color:#a7efff;border:1px solid #4c7287;border-radius:8px;padding:3px 7px;font-size:13px}
+.iconbtn{background:var(--panel2);border:1px solid var(--border);border-radius:10px;min-height:40px;padding:6px 12px;font-weight:700}
+.seg{display:flex;gap:4px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:4px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);border-radius:8px;padding:9px 10px;font-weight:750;min-height:40px}
+.seg button[aria-pressed="true"]{background:#285777;color:#fff}
+.rows{display:grid;gap:8px;padding-bottom:10px}
+.meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}
+main{padding-top:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px}
+.card h2{margin:0 0 8px;font-size:18px}
+.summary{border-left:5px solid var(--grey)}
+.summary.ok{border-left-color:var(--green)}.summary.warn{border-left-color:var(--yellow)}.summary.bad{border-left-color:var(--red)}
+.summary p{margin:6px 0}
+.small{font-size:12px;color:var(--muted)}
+.strip{display:grid;gap:6px}
+.striprow{display:grid;grid-template-columns:72px 1fr;gap:8px;align-items:center}
+.striprow .lbl{font-size:12px;font-weight:800;color:var(--muted)}
+.cells{display:flex;gap:3px}
+.cell{flex:1;min-width:0;height:30px;border-radius:6px;border:0;background:var(--grey);padding:0}
+.cell.s0{background:#2f8f68}.cell.s1{background:#c79a2a}.cell.s2{background:#d4473f}.cell.na{background:#33415a}
+.stops{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:2px 0 0 80px;gap:4px}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.inc{border:1px solid var(--border);border-radius:12px;padding:12px;margin:10px 0;background:var(--panel2)}
+.inc.s2{border-color:#8a3a36;background:#2a1b22}.inc.s1{border-color:#7d6a2a}
+.inc h3{margin:0;font-size:16px}
+.inc .where{color:var(--muted);font-size:13px;margin:3px 0 6px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.badge{font-size:11px;font-weight:800;padding:3px 7px;border-radius:6px;background:#30465e;border:1px solid #5a728a}
+.badge.red{background:#5b2320;border-color:#c0473f}.badge.yel{background:#4f4116;border-color:#b8952f}.badge.fresh{background:#6b1f4a;border-color:#e0559f}
+.inc .facts{font-size:13px;color:#d7e2ef}
+.camrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.thumb{position:relative;border-radius:9px;overflow:hidden;border:1px solid #3a4e66;background:#0a1424;aspect-ratio:4/3;padding:0;width:100%}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb span{position:absolute;left:0;right:0;bottom:0;background:rgba(6,12,24,.85);font-size:11px;padding:4px 6px;text-align:left;line-height:1.25}
+.thumb.err img{visibility:hidden}.thumb.err:before{content:"Image unavailable";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.other summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
+details.sec{border:1px solid var(--border);border-radius:12px;margin:8px 0;background:var(--panel)}
+details.sec>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary .dot{width:12px;height:12px;border-radius:50%;flex:none;background:#2f8f68}
+details.sec>summary .dot.s1{background:#c79a2a}details.sec>summary .dot.s2{background:#d4473f}details.sec>summary .dot.na{background:#56657d}
+details.sec>summary .t{flex:1;font-weight:700}
+details.sec>summary .n{font-size:12px;color:var(--muted);white-space:nowrap}
+details.sec[open]>summary{border-bottom:1px solid var(--border)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:12px}
+.cam{background:var(--panel2);border:1px solid var(--border);border-radius:11px;overflow:hidden;display:flex;flex-direction:column}
+.cam .thumb{border:0;border-radius:0}
+.cam .cap{padding:8px 10px;font-size:13px}
+.cam .cap b{display:block;font-size:13px}
+.cam .cap small{color:var(--muted);font-size:11px}
+.face{font-size:11px;font-weight:800;color:var(--green)}.face.o{color:#f0a37f}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 4px}
+.toolbar label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.note{font-size:13px;color:#c6d3e4;border-left:3px solid #60a1be;background:#132137;padding:9px 12px;border-radius:0 8px 8px 0;margin:10px 0}
+.warnnote{border-left-color:var(--yellow)}
+dialog{width:min(900px,calc(100% - 16px));padding:0;border:1px solid #4c6786;border-radius:16px;background:#101a2b;color:var(--text)}
+dialog::backdrop{background:rgba(0,0,0,.82)}
+.dlghead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--border);background:#17263b}
+.dlghead h2{margin:0;font-size:17px}.dlghead p{margin:3px 0 0;font-size:12px;color:var(--muted)}
+.close{min-width:42px;min-height:42px;border-radius:9px;border:1px solid #66809a;background:#2c4059;font-size:22px;line-height:1}
+.dlgbody{padding:12px 14px 16px}
+.dlgbody img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#08111f;border-radius:10px;border:1px solid #34445e;display:block}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.actions a,.actions button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 14px;border-radius:9px;border:1px solid #6a91ad;background:#224b67;color:#effcff;font-weight:750;font-size:13px;text-decoration:none}
+.field{display:grid;gap:6px;margin:10px 0}
+.field input{background:#0b1424;border:1px solid var(--border);border-radius:8px;padding:11px;width:100%}
+.status{font-size:13px;color:#ffd2a4;min-height:1.2em}
+footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px solid var(--border);margin-top:20px}
+.hidden{display:none!important}
+@media(max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.grid{grid-template-columns:1fr 1fr;gap:8px;padding:8px}.stops{font-size:10px}.striprow{grid-template-columns:60px 1fr}.stops{margin-left:68px}dialog{width:100%;max-height:100dvh;border-radius:0}}
+</style>
+</head>
+<body>
+<header>
+ <div class="shell">
+  <div class="top">
+   <div class="brand"><b>FL</b> ROAD CHECK</div>
+   <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh cameras and delays">↻ Refresh</button>
+   <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings">⚙</button>
+  </div>
+  <div class="rows">
+   <div class="seg" role="group" aria-label="Trip" id="tripSeg"></div>
+   <div class="seg" role="group" aria-label="Direction" id="dirSeg"></div>
+   <div class="meta"><span id="routeLine"></span><span id="updatedLine">Loading…</span></div>
+  </div>
+ </div>
+</header>
+
+<main class="shell">
+ <section class="card summary" id="summary" aria-live="polite"><h2>Checking the road…</h2></section>
+
+ <section class="card" id="stripCard">
+  <h2>Section by section</h2>
+  <div class="strip" id="strip"></div>
+  <div class="legend"><span><i style="background:#2f8f68"></i>Clear</span><span><i style="background:#c79a2a"></i>Slow / incident</span><span><i style="background:#d4473f"></i>Major / closed</span><span><i style="background:#33415a"></i>No delay data</span></div>
+  <div id="tripNotes"></div>
+ </section>
+
+ <section class="card" id="incCard">
+  <h2 id="incTitle">Reported problems</h2>
+  <div id="incList"></div>
+ </section>
+
+ <section id="camsCard">
+  <div class="toolbar">
+   <h2 style="margin:0;font-size:20px;margin-right:auto">Cameras in driving order</h2>
+   <div class="seg hidden" role="group" aria-label="Road" id="roadSeg"></div>
+  </div>
+  <div class="toolbar">
+   <label><input type="checkbox" id="myWay"> Only cameras listed as pointed my way</label>
+   <span class="small" id="camSource"></span>
+  </div>
+  <div id="sections"></div>
+ </section>
+
+ <footer>
+  Camera images and locations: Florida 511 / FDOT. Delays: TomTom (only if you add a key). This app never asks for your location. It is a personal-use viewer, not an official FDOT product; FL511 content is for individual personal use. Check conditions before driving, never while driving.
+ </footer>
+</main>
+
+<dialog id="camDlg" aria-labelledby="camDlgTitle">
+ <div class="dlghead"><div><h2 id="camDlgTitle">Camera</h2><p id="camDlgSub"></p></div><button class="close" id="camDlgClose" type="button" aria-label="Close">×</button></div>
+ <div class="dlgbody">
+  <img id="camDlgImg" alt="">
+  <p class="small">Still image, refreshed by FDOT every minute or two. Not live video.</p>
+  <div class="actions"><button type="button" id="camDlgRefresh">↻ Refresh image</button><a id="camDlgOpen" target="_blank" rel="noopener noreferrer">Open image</a><a href="https://fl511.com/map" target="_blank" rel="noopener noreferrer">FL511 map (live video)</a></div>
+ </div>
+</dialog>
+
+<dialog id="setDlg" aria-labelledby="setTitle">
+ <div class="dlghead"><div><h2 id="setTitle">Settings</h2><p>Saved only on this phone.</p></div><button class="close" id="setClose" type="button" aria-label="Close">×</button></div>
+ <div class="dlgbody">
+  <h3 style="margin:0 0 4px;font-size:16px">Delay alerts (TomTom)</h3>
+  <p class="small">Free key from developer.tomtom.com, no credit card. TomTom only sees the highway areas being checked, never your location.</p>
+  <div class="field"><label for="keyInput">TomTom API key</label><input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key"></div>
+  <div class="actions"><button type="button" id="keySave">Save &amp; test</button><button type="button" id="keyClear">Remove key</button></div>
+  <p class="status" id="keyStatus" role="status"></p>
+  <h3 style="margin:16px 0 4px;font-size:16px">Auto refresh</h3>
+  <label class="small"><input type="checkbox" id="autoInc" checked> Re-check delays every 5 minutes while the app is open</label>
+  <h3 style="margin:16px 0 4px;font-size:16px">Privacy</h3>
+  <p class="small">No GPS, no accounts, no tracking. The app talks to: FDOT's camera list (ArcGIS), FDOT camera images (divas.cloud), and TomTom if you add a key. Each of those can see your IP address, like any website.</p>
+  <div class="actions"><button type="button" id="clearCache">Reload camera list</button></div>
+  <p class="small" id="versionLine"></p>
+ </div>
+</dialog>
+
+<script>
+'use strict';
+const APP_VERSION='4.2';
+// [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
+const BAKED=__CAMERAS__;
+const BAKED_DATE='Nov 24, 2026';
+const ARC='https://services.arcgis.com/3wFbqsFPLeKqOlIK/arcgis/rest/services/FL511_Traffic_Cameras/FeatureServer/0/query';
+const IMG_OK=/^https:\/\/(images-dis|snapshots)\.divas\.cloud\//;
+
+const ROADS={
+ I95:{label:'I-95',where:"HIGHWAY='I-95' AND LATITUDE BETWEEN 26.4 AND 30.3",axis:'lat',aliases:['I95']},
+ TPK:{label:'Turnpike',where:"HIGHWAY='Floridas Turnpike' AND LATITUDE BETWEEN 26.4 AND 27.5",axis:'lat',aliases:['FL91','SR91','TPKE','FLTPKE','TURNPIKE','FLORIDASTURNPIKE']},
+ JTB:{label:'JTB',where:"HIGHWAY='SR-202 / Butler Blvd'",axis:'lon',aliases:['FL202','SR202']}
+};
+const JTB_LON0=-81.596;
+const TRIPS={
+ commute:{id:'commute',title:'Commute',route:'Gatlin Blvd ⇄ Gateway Blvd',go:'↓ To work',back:'↑ To home',goIncreasing:false,parallel:true,
+  legs:[{road:'I95',min:26.55,max:27.275},{road:'TPK',min:26.505,max:27.28}],
+  pos:(road,lat,lon)=>lat,
+  stops:[
+   {pos:26.50,name:'Boynton / Gateway',ex:'I-95 Exit 59 · Tpk Exit 86'},
+   {pos:26.704,name:'Okeechobee Blvd',ex:'I-95 Exit 70 · Tpk Exit 99',sw:10},
+   {pos:26.839,name:'PGA Blvd',ex:'I-95 Exit 79 · Tpk Exit 109',sw:8},
+   {pos:26.935,name:'Jupiter (Indiantown Rd)',ex:'I-95 Exit 87 · Tpk Exit 116',sw:3},
+   {pos:27.152,name:'Martin Hwy',ex:'I-95 Exit 110 · Tpk Exit 133',sw:10},
+   {pos:27.21,name:'Becker Rd',ex:'I-95 Exit 114 · Tpk Exit 138',sw:6},
+   {pos:27.285,name:'Gatlin / PSL',ex:'I-95 Exit 118 · Tpk Exit 142'}
+  ],
+  notes:['Turnpike has no exits for about 17 miles between Martin Hwy (Exit 133) and Jupiter (Exit 116). Southbound, Martin Hwy is your last chance to switch to I-95.',
+         'Crossover times are rough guesses for driving between the two highways on local roads.']},
+ jax:{id:'jax',title:'Jacksonville',route:'PSL → I-95 → JTB (Exit 344) → Jax Beaches',go:'↑ To Jax Beaches',back:'↓ Back home',goIncreasing:true,parallel:false,
+  legs:[{road:'I95',min:27.22,max:30.2515},{road:'JTB',min:-81.592,max:-81.42}],
+  pos:(road,lat,lon)=>road==='JTB'?30.2515+Math.max(0,lon-JTB_LON0):lat,
+  stops:[
+   {pos:27.22,name:'Port St. Lucie',ex:'MM 114'},{pos:27.45,name:'Fort Pierce',ex:'MM 131'},{pos:27.643,name:'Vero Beach',ex:'MM 147'},
+   {pos:27.998,name:'Palm Bay',ex:'MM 173'},{pos:28.358,name:'Cocoa',ex:'MM 201'},{pos:28.617,name:'Titusville',ex:'MM 220'},
+   {pos:29.013,name:'New Smyrna',ex:'MM 249'},{pos:29.262,name:'Daytona / Ormond',ex:'MM 268'},{pos:29.555,name:'Palm Coast',ex:'MM 289'},
+   {pos:29.925,name:'St. Augustine',ex:'MM 318'},{pos:30.17,name:'I-295',ex:'MM 337'},{pos:30.2515,name:'JTB exit',ex:'Exit 344'},
+   {pos:30.43,name:'Jax Beaches',ex:'JTB at the Intracoastal'}
+  ],
+  notes:['The Jacksonville route has one road, so there is no road-by-road suggestion. Use the problem cards and cameras to judge how bad a slowdown is before you leave.']}
+};
+const CAT={0:'Incident',1:'Crash',2:'Fog',3:'Dangerous conditions',4:'Rain',5:'Ice',6:'Slow traffic',7:'Lane closed',8:'Road closed',9:'Road work',10:'Wind',11:'Flooding',14:'Broken-down vehicle'};
+const MAG={0:'',1:'Minor',2:'Moderate',3:'Major',4:''};
+const DIRWORD={N:'northbound',S:'southbound',E:'eastbound',W:'westbound'};
+
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+
+const state={trip:store.get('trip','commute'),dir:store.get('dir','go'),road:store.get('road','I95'),
+ cams:[],camSource:'',incidents:null,incError:'',incAt:0,imgStamp:Date.now(),open:{}};
+if(!TRIPS[state.trip])state.trip='commute';
+
+/* ---------- geometry helpers ---------- */
+function km(a,b){const R=6371,toR=Math.PI/180,dLat=(b[1]-a[1])*toR,dLon=(b[0]-a[0])*toR,la=a[1]*toR,lb=b[1]*toR;
+ const h=Math.sin(dLat/2)**2+Math.cos(la)*Math.cos(lb)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function distToLine(p,line){ // p,[lon,lat]; line array of [lon,lat]; km, local flat projection
+ const kx=111.32*Math.cos(p[1]*Math.PI/180),ky=110.57;let best=Infinity;
+ for(let i=0;i<line.length-1;i++){const ax=(line[i][0]-p[0])*kx,ay=(line[i][1]-p[1])*ky,bx=(line[i+1][0]-p[0])*kx,by=(line[i+1][1]-p[1])*ky;
+  const dx=bx-ax,dy=by-ay,L=dx*dx+dy*dy;let t=L?-(ax*dx+ay*dy)/L:0;t=Math.max(0,Math.min(1,t));const x=ax+t*dx,y=ay+t*dy;best=Math.min(best,Math.hypot(x,y));}
+ if(line.length===1)best=km(p,line[0]);return best;}
+const norm=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function roadNamed(nums,road){return nums.some(n=>ROADS[road].aliases.some(a=>n===a||(n.startsWith(a)&&!/\d/.test(n.charAt(a.length)))));}
+
+/* ---------- trip helpers ---------- */
+const trip=()=>TRIPS[state.trip];
+function legOf(t,road){return t.legs.find(l=>l.road===road);}
+function inLeg(t,road,lat,lon,tol=0){const l=legOf(t,road);if(!l)return false;const v=ROADS[road].axis==='lat'?lat:lon;return v>=l.min-tol&&v<=l.max+tol;}
+function increasing(t,dir){return (dir==='go')===t.goIncreasing;}
+function travelDir(t,dir,road){const inc=increasing(t,dir);return ROADS[road].axis==='lat'?(inc?'N':'S'):(inc?'E':'W');}
+function sectionIndex(t,p){const s=t.stops;if(p<s[0].pos)return 0;for(let i=0;i<s.length-1;i++){if(p<s[i+1].pos)return i;}return s.length-2;}
+function sectionOrder(t,dir){const idx=[...Array(t.stops.length-1).keys()];return increasing(t,dir)?idx:idx.reverse();}
+function sectionName(t,i,dir){const a=t.stops[i],b=t.stops[i+1];return increasing(t,dir)?`${a.name} → ${b.name}`:`${b.name} → ${a.name}`;}
+function camsFor(t,road){return state.cams.filter(c=>c.road===road&&inLeg(t,road,c.lat,c.lon));}
+function lineFor(t,road){return camsFor(t,road).slice().sort((a,b)=>t.pos(road,a.lat,a.lon)-t.pos(road,b.lat,b.lon)).map(c=>[c.lon,c.lat]);}
+const mmOf=c=>{const m=/M[MP]\s*([\d.]+)/i.exec(c.desc);return m?Number(m[1]):null;};
+
+/* ---------- cameras ---------- */
+function makeCam(road,id,desc,dir,lat,lon,img){img=String(img).replace('/DGI//','/DGI/');if(!IMG_OK.test(img)||!isFinite(lat)||!isFinite(lon))return null;
+ return {road,id:String(id),desc:String(desc).replace(/\s+/g,' ').trim(),dir:/^[NSEW]$/.test(dir)?dir:'',lat:+lat,lon:+lon,img,key:road+'|'+img};}
+function bakedCams(){return BAKED.map(r=>makeCam(r[0],r[1],r[2],r[3],r[4],r[5],`https://images-dis.divas.cloud/DGI/chan-${r[6]}_h.jpg`)).filter(Boolean);}
+async function fetchRoadCams(road){
+ const u=new URL(ARC);u.search=new URLSearchParams({where:ROADS[road].where,outFields:'ID,DESCRIPT,DIRECTION,LATITUDE,LONGITUDE,IMAGE',returnGeometry:'false',resultRecordCount:'2000',f:'json'});
+ const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),12000);
+ try{const r=await fetch(u,{signal:ctl.signal});if(!r.ok)throw Error('HTTP '+r.status);const j=await r.json();if(!Array.isArray(j.features))throw Error('bad data');
+  return j.features.map(f=>{const a=f.attributes||{};return makeCam(road,a.ID,a.DESCRIPT,String(a.DIRECTION||'').trim().toUpperCase(),a.LATITUDE,a.LONGITUDE,a.IMAGE||'');}).filter(Boolean);}
+ finally{clearTimeout(to);}
+}
+async function loadCams(force){
+ const cached=store.get('cams-v4',null);
+ if(cached&&!force){try{const c=JSON.parse(cached);if(Date.now()-c.at<7*864e5&&c.cams.length>100){state.cams=c.cams;state.camSource=`Camera list from FDOT, saved ${new Date(c.at).toLocaleDateString()}`;}}catch(e){}}
+ if(!state.cams.length){state.cams=bakedCams();state.camSource=`Built-in camera list (${BAKED_DATE})`;}
+ render();
+ const stale=!cached||force||(()=>{try{return Date.now()-JSON.parse(cached).at>864e5}catch(e){return true}})();
+ if(!stale)return;
+ const roads=Object.keys(ROADS);
+ const res=await Promise.allSettled(roads.map(fetchRoadCams));
+ const okRoads=roads.filter((r,k)=>res[k].status==='fulfilled'&&res[k].value.length>5);
+ if(!okRoads.length)return; // offline or blocked: keep cached/built-in list
+ const live=okRoads.flatMap(r=>res[roads.indexOf(r)].value);
+ const keep=state.cams.filter(c=>!okRoads.includes(c.road)); // roads that failed keep their previous list
+ state.cams=[...live,...keep];
+ state.camSource=okRoads.length===roads.length?'Live camera list from FDOT':'Camera list partly live, partly saved';
+ if(okRoads.length===roads.length)store.set('cams-v4',JSON.stringify({at:Date.now(),cams:state.cams}));
+ render();
+}
+
+/* ---------- incidents (TomTom) ---------- */
+const TT_FIELDS='{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers,probabilityOfOccurrence,lastReportTime}}}';
+function tiles(t){ // small boxes hugging the route, each well under TomTom's 10,000 km² limit
+ const pts=t.legs.flatMap(l=>camsFor(t,l.road).map(c=>({p:t.pos(l.road,c.lat,c.lon),lat:c.lat,lon:c.lon}))).sort((a,b)=>a.p-b.p);
+ const out=[];let cur=null;const pad=0.03;
+ const area=b=>((b.maxLat-b.minLat+2*pad)*111)*((b.maxLon-b.minLon+2*pad)*111*Math.cos(b.minLat*Math.PI/180));
+ for(const q of pts){
+  if(!cur){cur={minLat:q.lat,maxLat:q.lat,minLon:q.lon,maxLon:q.lon};continue;}
+  const n={minLat:Math.min(cur.minLat,q.lat),maxLat:Math.max(cur.maxLat,q.lat),minLon:Math.min(cur.minLon,q.lon),maxLon:Math.max(cur.maxLon,q.lon)};
+  if(n.maxLat-n.minLat>0.45||area(n)>4000){out.push(cur);cur={minLat:q.lat,maxLat:q.lat,minLon:q.lon,maxLon:q.lon};}else cur=n;
+ }
+ if(cur)out.push(cur);
+ return out.map(b=>[b.minLon-pad,b.minLat-pad,b.maxLon+pad,b.maxLat+pad].map(v=>v.toFixed(4)).join(','));
+}
+async function fetchIncidents(){
+ const key=store.get('tt-key','');
+ if(!key){state.incidents=null;state.incError='';render();return;}
+ const t=trip();
+ try{
+  const boxes=tiles(t);const seen=new Map();
+  const res=await Promise.all(boxes.map(async bbox=>{
+   const u=`https://api.tomtom.com/traffic/services/5/incidentDetails?key=${encodeURIComponent(key)}&bbox=${bbox}&fields=${encodeURIComponent(TT_FIELDS)}&language=en-US&timeValidityFilter=present`;
+   const r=await fetch(u);
+   if(r.status===403||r.status===401)throw Error('TomTom rejected the key. Check it in Settings.');
+   if(r.status===429)throw Error('TomTom free limit reached for now. Cameras still work.');
+   if(!r.ok)throw Error('TomTom error '+r.status);
+   return (await r.json()).incidents||[];
+  }));
+  for(const list of res)for(const inc of list){const id=inc.properties&&inc.properties.id;if(id&&!seen.has(id))seen.set(id,inc);}
+  state.incidents={trip:t.id,list:[...seen.values()],requests:boxes.length};state.incError='';state.incAt=Date.now();
+ }catch(e){state.incError=e.message||'Could not load delays.';}
+ render();
+}
+
+function analyze(raw,t){
+ const p=raw.properties||{},g=raw.geometry||{};
+ let coords=g.type==='Point'?[g.coordinates]:(g.coordinates||[]);
+ coords=coords.filter(c=>Array.isArray(c)&&isFinite(c[0])&&isFinite(c[1]));
+ if(!coords.length)return null;
+ const tail=coords[0],head=coords[coords.length-1];
+ const nums=(p.roadNumbers||[]).map(norm);let best=null;
+ for(const l of t.legs){const line=lineFor(t,l.road);if(line.length<2)continue;
+  const d=Math.min(distToLine(head,line),distToLine(tail,line));
+  const named=nums.length>0&&roadNamed(nums,l.road);
+  const ok=named?d<=2:(nums.length===0&&d<=0.25);
+  if(ok&&(!best||d<best.d))best={road:l.road,d};}
+ if(!best)return null;
+ const road=best.road;
+ if(!inLeg(t,road,head[1],head[0],0.02)&&!inLeg(t,road,tail[1],tail[0],0.02))return null;
+ const ax=ROADS[road].axis==='lat'?1:0;const delta=head[ax]-tail[ax];
+ let dir='';if(coords.length>1&&Math.abs(delta)>0.0015)dir=ROADS[road].axis==='lat'?(delta>0?'N':'S'):(delta>0?'E':'W');
+ const pos=t.pos(road,head[1],head[0]);
+ const cat=p.iconCategory??0,mag=p.magnitudeOfDelay??0,delayMin=Math.round((p.delay||0)/60);
+ const started=Date.parse(p.startTime||''),lastRep=Date.parse(p.lastReportTime||'');
+ const ageMin=isFinite(started)?Math.round((Date.now()-started)/60000):null;
+ const desc=(p.events||[]).map(e=>e.description).filter(Boolean);
+ const closed=cat===8||desc.some(d=>/road closed|all lanes (are )?(closed|blocked)|closed to (all )?traffic/i.test(d));
+ const laneClosed=!closed&&(cat===7||desc.some(d=>/lanes? (closed|blocked)/i.test(d)));
+ let sev=0;
+ if(cat===8||closed||mag===3||mag===4||delayMin>=15)sev=2;
+ else if(mag===2||delayMin>=5||[1,7,11,14].includes(cat)||(mag===1&&delayMin>=2)||(cat===6&&delayMin>=2))sev=1;
+ if(cat===9&&delayMin<2&&mag<2)sev=0;
+ // TomTom includes scheduled work and ramp closures, often marked 'probable'. Those go in a separate,
+ // collapsed list and do not turn the strip red unless traffic is actually being delayed.
+ const prob=p.probabilityOfOccurrence||'certain';
+ const workish=cat===9||desc.some(d=>/road ?works|construction|maintenance|ramp|slip road|exit|entry|on-?ramp|off-?ramp/i.test(d));
+ let unconfirmed=(prob!=='certain'&&delayMin<5&&mag<3)||(closed&&delayMin===0&&mag!==3&&workish)||((cat===8||closed)&&delayMin===0&&prob!=='certain');
+ // Long-running closures with no delay (days-old ramp or construction work) and closures where TomTom's
+ // from/to are the same cross street (e.g. "Cheney Hwy → Cheney Hwy") are almost never the highway itself.
+ const longRunning=ageMin!==null&&ageMin>12*60&&delayMin===0;
+ const crossStreet=!!(p.from&&p.to&&norm(p.from)===norm(p.to)&&!roadNamed([norm(p.from)],road));
+ const why=unconfirmed?(prob!=='certain'?`reported as "${prob.replace('_',' ')}"`:'scheduled work or ramp, no delay'):'';
+ let why2=why;
+ if(!unconfirmed&&(closed||[7,8,9].includes(cat))&&delayMin<5&&(longRunning||crossStreet)){
+  unconfirmed=true;why2=crossStreet?`on ${p.from} (cross street or ramp), no delay`:`open for ${Math.round(ageMin/60)} h with no delay: likely long-term work`;}
+ if(unconfirmed)sev=0;
+ const fresh=!unconfirmed&&ageMin!==null&&ageMin<=45&&(cat===1||cat===8||closed||mag===3||(laneClosed&&mag>=2));
+ const score=unconfirmed?0:delayMin+(closed?60:0)+(fresh?15:0)+(cat===1?5:0);
+ return {raw,p,road,dir,pos,head,tail,cat,mag,delayMin,lenMi:(p.length||0)/1609.34,ageMin,lastRep,desc,closed,laneClosed,sev,fresh,score,unconfirmed,prob,why:why2,sec:sectionIndex(t,pos)};
+}
+// FDOT's direction field is unreliable in some districts (nearly all 'N'), so a camera pointed your way
+// only wins if it is about as close as the nearest camera overall.
+function nearestCam(t,road,pt,want){
+ let best=null,bestAny=null;
+ for(const c of camsFor(t,road)){const d=km(pt,[c.lon,c.lat]);
+  if(!bestAny||d<bestAny.d)bestAny={c,d};
+  if(c.dir===want&&(!best||d<best.d))best={c,d};}
+ if(best&&bestAny&&best.d<=bestAny.d+1.2)return {...best,match:true};
+ return bestAny?{...bestAny,match:bestAny.c.dir===want}:null;
+}
+
+/* ---------- rendering ---------- */
+function el(tag,attrs,...kids){const e=document.createElement(tag);if(attrs)for(const[k,v]of Object.entries(attrs)){if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v);}
+ for(const k of kids)if(k!=null&&k!==false)e.append(k);return e;}
+function imgUrl(c){return c.img+(c.img.includes('?')?'&':'?')+'t='+Math.floor(state.imgStamp/1000);}
+function thumb(c,caption){
+ const b=el('button',{class:'thumb',type:'button','aria-label':'Enlarge camera: '+c.desc,onclick:()=>openCam(c)});
+ const im=el('img',{alt:'Camera: '+c.desc,loading:'lazy',decoding:'async'});
+ im.dataset.cam=c.key;im.addEventListener('error',()=>b.classList.add('err'));im.addEventListener('load',()=>b.classList.remove('err'));
+ im.src=imgUrl(c);b.append(im);if(caption)b.append(el('span',{text:caption}));return b;}
+const ago=m=>m==null?'':m<1?'just now':m<60?`${m} min ago`:`${Math.floor(m/60)} h ${m%60} min ago`;
+
+function render(){
+ const t=trip(),dir=state.dir;
+ // trip + direction buttons
+ $('tripSeg').replaceChildren(...Object.values(TRIPS).map(x=>el('button',{type:'button','aria-pressed':String(x.id===t.id),text:x.title,onclick:()=>{if(state.trip!==x.id){state.trip=x.id;store.set('trip',x.id);state.incidents=null;render();fetchIncidents();}}})));
+ $('dirSeg').replaceChildren(...['go','back'].map(d=>el('button',{type:'button','aria-pressed':String(d===dir),text:d==='go'?t.go:t.back,onclick:()=>{state.dir=d;store.set('dir',d);render();}})));
+ $('routeLine').textContent=t.route;
+ const key=store.get('tt-key','');
+ updateMeta();
+
+ const roads=t.legs.map(l=>l.road);
+ const have=key&&state.incidents&&state.incidents.trip===t.id;
+ const incs=have?state.incidents.list.map(r=>analyze(r,t)).filter(Boolean):[];
+ const mine=(i)=>!i.dir||i.dir===travelDir(t,dir,i.road);
+ const ahead=incs.filter(i=>mine(i)&&!i.unconfirmed),other=incs.filter(i=>!mine(i)&&!i.unconfirmed),maybe=incs.filter(i=>mine(i)&&i.unconfirmed);
+ const order=sectionOrder(t,dir);
+ // section severity per road
+ const sev={};for(const r of roads){sev[r]=Array(t.stops.length-1).fill(have?0:-1);}
+ for(const i of ahead){sev[i.road][i.sec]=Math.max(sev[i.road][i.sec],i.sev);}
+
+ renderSummary(t,dir,have,ahead,sev,roads);
+ // strip
+ const strip=$('strip');strip.replaceChildren();
+ for(const r of roads){
+  if(!t.parallel&&r!=='I95')continue; // series trip: one combined row
+  const row=el('div',{class:'striprow'},el('span',{class:'lbl',text:t.parallel?ROADS[r].label:'Route'}));
+  const cells=el('div',{class:'cells'});
+  for(const i of order){
+   let s=t.parallel?sev[r][i]:Math.max(...roads.map(x=>sev[x][i]));
+   const name=sectionName(t,i,dir);
+   cells.append(el('button',{type:'button',class:'cell '+(s<0?'na':'s'+s),title:name,'aria-label':`${t.parallel?ROADS[r].label+', ':''}${name}: ${s<0?'no delay data':['clear','slow or incident','major or closed'][s]}`,onclick:()=>jumpTo(r,i)}));
+  }
+  row.append(cells);strip.append(row);
+ }
+ const first=t.stops[order.length&&increasing(t,dir)?0:t.stops.length-1],last=t.stops[increasing(t,dir)?t.stops.length-1:0];
+ strip.append(el('div',{class:'stops'},el('span',{text:first.name}),el('span',{text:'→'}),el('span',{text:last.name})));
+ $('tripNotes').replaceChildren(...t.notes.map(n=>el('p',{class:'note'+(n.startsWith('Turnpike has no exits')?' warnnote':''),text:n})));
+
+ // incidents
+ const list=$('incList');list.replaceChildren();
+ $('incTitle').textContent=`Reported problems · ${DIRWORD[travelDir(t,dir,roads[0])]}`;
+ if(!key){list.append(el('p',{class:'small',text:'Add a free TomTom key in Settings (⚙) to see crashes, closures and slowdowns here, each with the closest camera. Cameras below work without it.'}));}
+ else if(state.incError){list.append(el('p',{class:'status',text:state.incError}));}
+ else if(!have){list.append(el('p',{class:'small',text:'Loading reported delays…'}));}
+ else{
+  const sorted=ahead.slice().sort((a,b)=>increasing(t,dir)?a.pos-b.pos:b.pos-a.pos);
+  if(!sorted.length)list.append(el('p',{text:'No problems reported in your direction right now.'}));
+  for(const i of sorted)list.append(incCard(t,dir,i));
+  if(maybe.length){const d=el('details',{class:'other'},el('summary',{text:`${maybe.length} planned or unconfirmed (long-term work, ramp or cross-street closures, "probable" reports; no real delay)`}));for(const i of maybe)d.append(incCard(t,dir,i));list.append(d);}
+  if(other.length){const d=el('details',{class:'other'},el('summary',{text:`${other.length} reported on the other side of the road`}));for(const i of other)d.append(incCard(t,dir,i,true));list.append(d);}
+ }
+ renderCams(t,dir,roads,sev,have);
+}
+
+function incCard(t,dir,i,otherSide){
+ const want=travelDir(t,dir,i.road);
+ const type=i.unconfirmed&&i.closed?'Possible closure':i.closed&&i.cat===1?'Crash, road closed':i.closed?'Road closed':(CAT[i.cat]||'Incident');
+ const card=el('article',{class:'inc s'+i.sev});
+ const near=nearestCam(t,i.road,i.head,otherSide?i.dir:want);
+ const mm=near?mmOf(near.c):null;
+ card.append(el('h3',{text:`${type} · ${ROADS[i.road].label}${i.dir?' '+DIRWORD[i.dir]:''}`}));
+ const where=[i.p.from&&i.p.to?`${i.p.from} → ${i.p.to}`:(i.p.from||i.p.to||''),mm?`near MM ${mm}`:'' ].filter(Boolean).join(' · ');
+ card.append(el('div',{class:'where',text:where||(near?`Near ${near.c.desc}`:'')}));
+ const b=el('div',{class:'badges'});
+ if(i.fresh)b.append(el('span',{class:'badge fresh',text:'NEW & SERIOUS: can get worse fast'}));
+ if(i.unconfirmed)b.append(el('span',{class:'badge',text:'UNCONFIRMED / PLANNED: '+i.why}));
+ if(i.closed)b.append(el('span',{class:'badge '+(i.unconfirmed?'':'red'),text:i.unconfirmed?'closure reported':'ROAD CLOSED'}));
+ else if(i.laneClosed)b.append(el('span',{class:'badge yel',text:'LANE(S) CLOSED'}));
+ if(MAG[i.mag])b.append(el('span',{class:'badge '+(i.mag===3?'red':'yel'),text:MAG[i.mag]+' delay'}));
+ if(i.p.probabilityOfOccurrence&&i.p.probabilityOfOccurrence!=='certain')b.append(el('span',{class:'badge',text:i.p.probabilityOfOccurrence.replace('_',' ')}));
+ if(b.childNodes.length)card.append(b);
+ const facts=[];
+ if(i.desc.length)facts.push(i.desc.join('; '));
+ if(i.delayMin>0)facts.push(`≈ ${i.delayMin} min delay`);
+ if(i.lenMi>=0.2)facts.push(`backup ≈ ${i.lenMi.toFixed(1)} mi`);
+ if(i.ageMin!=null)facts.push(`started ${ago(i.ageMin)}`);
+ if(isFinite(i.lastRep))facts.push(`last report ${ago(Math.round((Date.now()-i.lastRep)/60000))}`);
+ card.append(el('div',{class:'facts',text:facts.join(' · ')}));
+ const row=el('div',{class:'camrow'});
+ if(near){row.append(thumb(near.c,(near.match||!near.c.dir?'At the problem · ':'At the problem (listed as pointing '+DIRWORD[near.c.dir]+') · ')+near.c.desc));}
+ if(i.lenMi>=1){const back=nearestCam(t,i.road,i.tail,otherSide?i.dir:want);if(back&&(!near||back.c.key!==near.c.key))row.append(thumb(back.c,'Back of the backup · '+back.c.desc));}
+ if(row.childNodes.length)card.append(row);else card.append(el('p',{class:'small',text:'No camera close to this spot.'}));
+ return card;
+}
+
+function renderSummary(t,dir,have,ahead,sev,roads){
+ const box=$('summary');box.className='card summary';
+ const key=store.get('tt-key','');
+ if(!key){box.replaceChildren(el('h2',{text:'Cameras ready'}),el('p',{text:`Cameras are in driving order for ${dir==='go'?t.go.replace(/^\W+/,''):t.back.replace(/^\W+/,'')}. Add a free TomTom key in Settings to get delay alerts and a suggestion.`}));return;}
+ if(state.incError&&!have){box.classList.add('warn');box.replaceChildren(el('h2',{text:'Delays unavailable'}),el('p',{text:state.incError}),el('p',{class:'small',text:'Check the cameras below.'}));return;}
+ if(!have){box.replaceChildren(el('h2',{text:'Checking reported delays…'}));return;}
+ const order=sectionOrder(t,dir);
+ const worst=ahead.reduce((m,i)=>Math.max(m,i.sev),0);
+ box.classList.add(worst===2?'bad':worst===1?'warn':'ok');
+ if(!t.parallel){
+  const total=ahead.reduce((s,i)=>s+i.delayMin,0);
+  if(!ahead.length){box.replaceChildren(el('h2',{text:'No reported problems on your route'}),el('p',{class:'small',text:'Still worth a glance at the cameras for weather.'}));return;}
+  const lead=ahead.slice().sort((a,b)=>b.score-a.score)[0];
+  box.replaceChildren(el('h2',{text:`${ahead.length} problem${ahead.length>1?'s':''} ahead · ≈ ${total} min of reported delay`}),
+   el('p',{text:`Worst: ${CAT[lead.cat]||'Incident'} on ${ROADS[lead.road].label} in the ${sectionName(t,lead.sec,dir)} section${lead.delayMin?`, ≈ ${lead.delayMin} min`:''}${lead.ageMin!=null?`, started ${ago(lead.ageMin)}`:''}.`}),
+   el('p',{class:'small',text:'Tap a red or yellow block, or check the cameras on each card below.'}));
+  return;
+ }
+ // parallel (commute): per section scores and a simple plan
+ const sc={};for(const r of roads){sc[r]=Array(t.stops.length-1).fill(0);}
+ for(const i of ahead)sc[i.road][i.sec]+=i.score;
+ const tot=r=>sc[r].reduce((a,b)=>a+b,0);
+ const [A,B]=roads;const bestRoad=tot(A)<=tot(B)?A:B,otherRoad=bestRoad===A?B:A;
+ // dynamic program over sections in travel order, with a time penalty for crossing over at a stop
+ const sw=(prevIdx,curIdx)=>{const stop=t.stops[Math.max(prevIdx,curIdx)];return stop.sw||8;};
+ let cost={},path={};
+ order.forEach((s,k)=>{const nc={},np={};for(const r of roads){if(k===0){nc[r]=sc[r][s];np[r]=[r];continue;}
+  const stay=cost[r],o=roads.find(x=>x!==r),cross=cost[o]+sw(order[k-1],s);
+  if(stay<=cross){nc[r]=stay+sc[r][s];np[r]=[...path[r],r];}else{nc[r]=cross+sc[r][s];np[r]=[...path[o],r];}}
+  cost=nc;path=np;});
+ const mixRoad=cost[A]<=cost[B]?A:B,mix=path[mixRoad],mixCost=cost[mixRoad];
+ const switches=mix.filter((r,k)=>k>0&&r!==mix[k-1]).length;
+ const h=[];
+ if(tot(A)<3&&tot(B)<3){h.push(el('h2',{text:'Both roads look clear'}),el('p',{text:'No significant problems reported on I-95 or the Turnpike in your direction.'}));}
+ else if(switches&&mixCost+3<tot(bestRoad)){
+  const legs=[];let cur=mix[0],startK=0;
+  for(let k=1;k<=mix.length;k++){if(k===mix.length||mix[k]!==cur){legs.push({road:cur,from:order[startK],to:order[k-1]});cur=mix[k];startK=k;}}
+  const steps=legs.map((l,n)=>{const st=n===0?'Start on':'switch to';
+   const at=n===0?'':` at ${t.stops[increasing(t,dir)?l.from:l.from+1].name}`;return `${st} ${ROADS[l.road].label}${at}`;});
+  h.push(el('h2',{text:'Suggestion: mix the two roads'}),el('p',{text:steps.join(', then ')+'.'}),
+   el('p',{class:'small',text:`Reported delays: I-95 ≈ ${Math.round(tot('I95'))}, Turnpike ≈ ${Math.round(tot('TPK'))} (minutes, weighted up for crashes, closures and fresh incidents). Crossover times are rough.`}));
+ }else if(tot(otherRoad)-tot(bestRoad)>=3){
+  h.push(el('h2',{text:`Suggestion: take ${ROADS[bestRoad].label}`}),
+   el('p',{text:`${ROADS[otherRoad].label} has more reported trouble in your direction (≈ ${Math.round(tot(otherRoad))} vs ≈ ${Math.round(tot(bestRoad))} weighted minutes).`}));
+ }else{h.push(el('h2',{text:'No clear winner'}),el('p',{text:`Both roads have similar reported delays (I-95 ≈ ${Math.round(tot('I95'))}, Turnpike ≈ ${Math.round(tot('TPK'))} weighted minutes). Check the cameras.`}));}
+ const freshOnes=ahead.filter(i=>i.fresh);
+ if(freshOnes.length)h.push(el('p',{class:'note warnnote',text:`${freshOnes.length} new serious incident${freshOnes.length>1?'s':''} (under 45 min old). Reported delay may not have caught up yet, so look at the camera.`}));
+ box.replaceChildren(...h);
+}
+
+function renderCams(t,dir,roads,sev,have){
+ const roadSeg=$('roadSeg');
+ if(t.parallel){roadSeg.classList.remove('hidden');if(!roads.includes(state.road))state.road=roads[0];
+  roadSeg.replaceChildren(...roads.map(r=>el('button',{type:'button','aria-pressed':String(r===state.road),text:ROADS[r].label,onclick:()=>{state.road=r;store.set('road',r);render();}})));}
+ else roadSeg.classList.add('hidden');
+ $('camSource').textContent=state.camSource;
+ const myWay=$('myWay').checked;
+ const showRoads=t.parallel?[state.road]:roads;
+ const order=sectionOrder(t,dir);const inc=increasing(t,dir);
+ const box=$('sections');box.replaceChildren();
+ for(const s of order){
+  let cams=[];for(const r of showRoads){cams.push(...camsFor(t,r).filter(c=>sectionIndex(t,t.pos(r,c.lat,c.lon))===s));}
+  const total=cams.length;
+  if(myWay)cams=cams.filter(c=>c.dir===travelDir(t,dir,c.road));
+  cams.sort((a,b)=>{const pa=t.pos(a.road,a.lat,a.lon),pb=t.pos(b.road,b.lat,b.lon);return inc?pa-pb:pb-pa;});
+  const sv=Math.max(...showRoads.map(r=>sev[r]?sev[r][s]:-1));
+  const id=`${t.id}-${s}`;
+  const isOpen=state.open[id]??(t.parallel||sv>=1);
+  const d=el('details',{class:'sec',id:'sec-'+s});if(isOpen)d.open=true;
+  const stopB=t.stops[inc?s+1:s];
+  d.append(el('summary',null,el('span',{class:'dot '+(sv<0?'na':'s'+sv)}),el('span',{class:'t',text:sectionName(t,s,dir)}),el('span',{class:'n',text:`${cams.length}${myWay&&cams.length!==total?' of '+total:''} cams${stopB.ex?' · '+stopB.ex:''}`})));
+  const fill=()=>{if(d.querySelector('.grid'))return;const g=el('div',{class:'grid'});
+   if(!cams.length)g.append(el('p',{class:'small',text:myWay&&total?'No cameras pointed your way here. Untick "Only cameras pointed my way" to see the rest.':'No FDOT cameras listed in this section.'}));
+   for(const c of cams){const facing=c.dir===travelDir(t,dir,c.road);
+    g.append(el('div',{class:'cam'},thumb(c),el('div',{class:'cap'},el('b',{text:c.desc}),el('span',{class:'face'+(facing?'':' o'),text:c.dir?(facing?'Points your way':'Points '+DIRWORD[c.dir]):'Direction not listed'}),t.parallel?null:el('small',{text:' · '+ROADS[c.road].label}))));}
+   d.append(g);};
+  if(isOpen)fill();
+  d.addEventListener('toggle',()=>{state.open[id]=d.open;if(d.open)fill();});
+  box.append(d);
+ }
+}
+function jumpTo(road,s){const t=trip();if(t.parallel&&state.road!==road){state.road=road;store.set('road',road);}
+ state.open[`${t.id}-${s}`]=true;render();const e=$('sec-'+s);if(e)e.scrollIntoView({behavior:'smooth',block:'start'});}
+
+/* ---------- image refresh without flicker ---------- */
+function refreshImages(){state.imgStamp=Date.now();
+ document.querySelectorAll('img[data-cam]').forEach(im=>{const c=state.cams.find(x=>x.key===im.dataset.cam);if(!c)return;
+  const r=im.getBoundingClientRect();if(r.bottom<-200||r.top>innerHeight+600)return; // only what's on or near screen
+  const pre=new Image();pre.onload=()=>{im.src=pre.src;};pre.src=imgUrl(c);});
+ updateMeta();}
+function updateMeta(){const parts=[];if(state.incAt&&store.get('tt-key',''))parts.push('Delays '+new Date(state.incAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}));
+ parts.push('Images '+new Date(state.imgStamp).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}));$('updatedLine').textContent=parts.join(' · ');}
+
+/* ---------- dialogs ---------- */
+let dlgCam=null;
+function openCam(c){dlgCam=c;$('camDlgTitle').textContent=c.desc;$('camDlgSub').textContent=`${ROADS[c.road].label} · ${c.dir?'points '+DIRWORD[c.dir]:'direction not listed'} · FDOT camera ${c.id}`;
+ $('camDlgImg').src=c.img+'?t='+Date.now();$('camDlgImg').alt='Camera: '+c.desc;$('camDlgOpen').href=c.img;$('camDlg').showModal();}
+$('camDlgClose').onclick=()=>$('camDlg').close();
+$('camDlgRefresh').onclick=()=>{if(dlgCam)$('camDlgImg').src=dlgCam.img+'?t='+Date.now();};
+$('camDlg').addEventListener('click',e=>{if(e.target===$('camDlg'))$('camDlg').close();});
+$('settingsBtn').onclick=()=>{$('keyInput').value=store.get('tt-key','');$('keyStatus').textContent='';$('autoInc').checked=store.get('auto-inc','1')==='1';$('versionLine').textContent=`Road Check v${APP_VERSION} · ${state.camSource}`;$('setDlg').showModal();};
+$('setClose').onclick=()=>$('setDlg').close();
+$('autoInc').onchange=e=>store.set('auto-inc',e.target.checked?'1':'0');
+$('keySave').onclick=async()=>{const k=$('keyInput').value.trim();if(!/^[A-Za-z0-9_-]{16,64}$/.test(k)){$('keyStatus').textContent='That does not look like a TomTom key.';return;}
+ store.set('tt-key',k);$('keyStatus').textContent='Testing…';await fetchIncidents();
+ $('keyStatus').textContent=state.incError?state.incError:`Key works. ${state.incidents?state.incidents.list.length:0} incidents found near this route.`;};
+$('keyClear').onclick=()=>{store.del('tt-key');state.incidents=null;$('keyInput').value='';$('keyStatus').textContent='Key removed.';render();};
+$('clearCache').onclick=()=>{store.del('cams-v4');state.cams=[];loadCams(true);$('versionLine').textContent='Reloading camera list…';};
+$('myWay').checked=store.get('myway','0')==='1';
+$('myWay').onchange=e=>{store.set('myway',e.target.checked?'1':'0');render();};
+$('refreshBtn').onclick=()=>{refreshImages();fetchIncidents();};
+
+/* ---------- timers: only while the app is on screen ---------- */
+setInterval(()=>{if(document.visibilityState==='visible')refreshImages();},90_000);
+setInterval(()=>{if(document.visibilityState==='visible'&&store.get('auto-inc','1')==='1')fetchIncidents();},300_000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-state.incAt>120_000){refreshImages();fetchIncidents();}});
+
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+loadCams(false).then(fetchIncidents);
+</script>
+</body>
+</html>

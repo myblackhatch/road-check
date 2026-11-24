@@ -135,6 +135,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
   </div>
   <div class="toolbar">
    <label><input type="checkbox" id="myWay"> Only cameras listed as pointed my way</label>
+   <label><input type="checkbox" id="showOffline"> Show offline cameras</label>
    <span class="small" id="camSource"></span>
   </div>
   <div id="sections"></div>
@@ -173,7 +174,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.2';
+const APP_VERSION='4.3';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -223,6 +224,16 @@ const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}ca
 const state={trip:store.get('trip','commute'),dir:store.get('dir','go'),road:store.get('road','I95'),
  cams:[],camSource:'',incidents:null,incError:'',incAt:0,imgStamp:Date.now(),open:{}};
 if(!TRIPS[state.trip])state.trip='commute';
+// Cameras whose image fails to load are hidden for 6 hours, then retried.
+const DEAD_MS=6*3600e3;
+state.dead=(()=>{try{const d=JSON.parse(store.get('dead-v1','{}'));for(const k in d)if(Date.now()-d[k]>DEAD_MS)delete d[k];return d;}catch(e){return {};}})();
+const saveDead=()=>store.set('dead-v1',JSON.stringify(state.dead));
+const isDead=c=>!!state.dead[c.key];
+let deadTimer=null;
+function markDead(c,imgEl){if(state.dead[c.key])return;state.dead[c.key]=Date.now();saveDead();
+ if(imgEl&&imgEl.closest('#incList')){clearTimeout(deadTimer);deadTimer=setTimeout(render,800);} // pick another camera for the problem card
+ else if(imgEl&&!$('showOffline').checked){const card=imgEl.closest('.cam');if(card)card.classList.add('hidden');}}
+function markAlive(c){if(state.dead[c.key]){delete state.dead[c.key];saveDead();}}
 
 /* ---------- geometry helpers ---------- */
 function km(a,b){const R=6371,toR=Math.PI/180,dLat=(b[1]-a[1])*toR,dLon=(b[0]-a[0])*toR,la=a[1]*toR,lb=b[1]*toR;
@@ -249,7 +260,8 @@ function lineFor(t,road){return camsFor(t,road).slice().sort((a,b)=>t.pos(road,a
 const mmOf=c=>{const m=/M[MP]\s*([\d.]+)/i.exec(c.desc);return m?Number(m[1]):null;};
 
 /* ---------- cameras ---------- */
-function makeCam(road,id,desc,dir,lat,lon,img){img=String(img).replace('/DGI//','/DGI/');if(!IMG_OK.test(img)||!isFinite(lat)||!isFinite(lon))return null;
+const SKIP_CAM=/TPAS|rest area|service plaza|truck parking/i; // rest stops: parked trucks, not the road
+function makeCam(road,id,desc,dir,lat,lon,img){img=String(img).replace('/DGI//','/DGI/');if(!IMG_OK.test(img)||!isFinite(lat)||!isFinite(lon)||SKIP_CAM.test(String(desc)))return null;
  return {road,id:String(id),desc:String(desc).replace(/\s+/g,' ').trim(),dir:/^[NSEW]$/.test(dir)?dir:'',lat:+lat,lon:+lon,img,key:road+'|'+img};}
 function bakedCams(){return BAKED.map(r=>makeCam(r[0],r[1],r[2],r[3],r[4],r[5],`https://images-dis.divas.cloud/DGI/chan-${r[6]}_h.jpg`)).filter(Boolean);}
 async function fetchRoadCams(road){
@@ -362,7 +374,7 @@ function analyze(raw,t){
 // only wins if it is about as close as the nearest camera overall.
 function nearestCam(t,road,pt,want){
  let best=null,bestAny=null;
- for(const c of camsFor(t,road)){const d=km(pt,[c.lon,c.lat]);
+ for(const c of camsFor(t,road)){if(isDead(c))continue;const d=km(pt,[c.lon,c.lat]);
   if(!bestAny||d<bestAny.d)bestAny={c,d};
   if(c.dir===want&&(!best||d<best.d))best={c,d};}
  if(best&&bestAny&&best.d<=bestAny.d+1.2)return {...best,match:true};
@@ -376,7 +388,7 @@ function imgUrl(c){return c.img+(c.img.includes('?')?'&':'?')+'t='+Math.floor(st
 function thumb(c,caption){
  const b=el('button',{class:'thumb',type:'button','aria-label':'Enlarge camera: '+c.desc,onclick:()=>openCam(c)});
  const im=el('img',{alt:'Camera: '+c.desc,loading:'lazy',decoding:'async'});
- im.dataset.cam=c.key;im.addEventListener('error',()=>b.classList.add('err'));im.addEventListener('load',()=>b.classList.remove('err'));
+ im.dataset.cam=c.key;im.addEventListener('error',()=>{b.classList.add('err');markDead(c,im);});im.addEventListener('load',()=>{b.classList.remove('err');markAlive(c);});
  im.src=imgUrl(c);b.append(im);if(caption)b.append(el('span',{text:caption}));return b;}
 const ago=m=>m==null?'':m<1?'just now':m<60?`${m} min ago`:`${Math.floor(m/60)} h ${m%60} min ago`;
 
@@ -526,17 +538,19 @@ function renderCams(t,dir,roads,sev,have){
  const box=$('sections');box.replaceChildren();
  for(const s of order){
   let cams=[];for(const r of showRoads){cams.push(...camsFor(t,r).filter(c=>sectionIndex(t,t.pos(r,c.lat,c.lon))===s));}
-  const total=cams.length;
   if(myWay)cams=cams.filter(c=>c.dir===travelDir(t,dir,c.road));
+  const offline=cams.filter(isDead).length;
+  if(!$('showOffline').checked)cams=cams.filter(c=>!isDead(c));
+  const total=cams.length+($('showOffline').checked?0:offline);
   cams.sort((a,b)=>{const pa=t.pos(a.road,a.lat,a.lon),pb=t.pos(b.road,b.lat,b.lon);return inc?pa-pb:pb-pa;});
   const sv=Math.max(...showRoads.map(r=>sev[r]?sev[r][s]:-1));
   const id=`${t.id}-${s}`;
   const isOpen=state.open[id]??(t.parallel||sv>=1);
   const d=el('details',{class:'sec',id:'sec-'+s});if(isOpen)d.open=true;
   const stopB=t.stops[inc?s+1:s];
-  d.append(el('summary',null,el('span',{class:'dot '+(sv<0?'na':'s'+sv)}),el('span',{class:'t',text:sectionName(t,s,dir)}),el('span',{class:'n',text:`${cams.length}${myWay&&cams.length!==total?' of '+total:''} cams${stopB.ex?' · '+stopB.ex:''}`})));
+  d.append(el('summary',null,el('span',{class:'dot '+(sv<0?'na':'s'+sv)}),el('span',{class:'t',text:sectionName(t,s,dir)}),el('span',{class:'n',text:`${cams.length} cams${offline&&!$('showOffline').checked?` (${offline} offline)`:''}${stopB.ex?' · '+stopB.ex:''}`})));
   const fill=()=>{if(d.querySelector('.grid'))return;const g=el('div',{class:'grid'});
-   if(!cams.length)g.append(el('p',{class:'small',text:myWay&&total?'No cameras pointed your way here. Untick "Only cameras pointed my way" to see the rest.':'No FDOT cameras listed in this section.'}));
+   if(!cams.length)g.append(el('p',{class:'small',text:offline?'All cameras here are offline right now.':myWay?'No cameras listed as pointed your way here.':'No FDOT cameras listed in this section.'}));
    for(const c of cams){const facing=c.dir===travelDir(t,dir,c.road);
     g.append(el('div',{class:'cam'},thumb(c),el('div',{class:'cap'},el('b',{text:c.desc}),el('span',{class:'face'+(facing?'':' o'),text:c.dir?(facing?'Points your way':'Points '+DIRWORD[c.dir]):'Direction not listed'}),t.parallel?null:el('small',{text:' · '+ROADS[c.road].label}))));}
    d.append(g);};
@@ -574,6 +588,7 @@ $('keyClear').onclick=()=>{store.del('tt-key');state.incidents=null;$('keyInput'
 $('clearCache').onclick=()=>{store.del('cams-v4');state.cams=[];loadCams(true);$('versionLine').textContent='Reloading camera list…';};
 $('myWay').checked=store.get('myway','0')==='1';
 $('myWay').onchange=e=>{store.set('myway',e.target.checked?'1':'0');render();};
+$('showOffline').onchange=()=>render();
 $('refreshBtn').onclick=()=>{refreshImages();fetchIncidents();};
 
 /* ---------- timers: only while the app is on screen ---------- */

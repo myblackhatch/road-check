@@ -59,6 +59,7 @@ main{padding-top:12px}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb span{position:absolute;left:0;right:0;bottom:0;background:rgba(6,12,24,.85);font-size:11px;padding:4px 6px;text-align:left;line-height:1.25}
 .thumb.err img{visibility:hidden}.thumb.err:before{content:"Image unavailable";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.grouphead{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
 .other summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
 details.sec{border:1px solid var(--border);border-radius:12px;margin:8px 0;background:var(--panel)}
 details.sec>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px}
@@ -174,7 +175,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.4';
+const APP_VERSION='4.5';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -228,6 +229,15 @@ if(!TRIPS[state.trip])state.trip='commute';
 const DEAD_MS=6*3600e3;
 state.dead=(()=>{try{const d=JSON.parse(store.get('dead-v1','{}'));for(const k in d)if(Date.now()-d[k]>DEAD_MS)delete d[k];return d;}catch(e){return {};}})();
 const saveDead=()=>store.set('dead-v1',JSON.stringify(state.dead));
+// Delay history per TomTom incident id (last 2 h), to tell growing problems from easing or stale ones.
+state.hist=(()=>{try{return JSON.parse(store.get('hist-v1','{}'));}catch(e){return {};}})();
+function recordHistory(list){const now=Date.now();
+ for(const inc of list){const p=inc.properties||{};if(!p.id)continue;(state.hist[p.id]=state.hist[p.id]||[]).push([now,p.delay||0]);}
+ for(const id in state.hist){state.hist[id]=state.hist[id].filter(x=>now-x[0]<2*3600e3).slice(-30);if(!state.hist[id].length)delete state.hist[id];}
+ store.set('hist-v1',JSON.stringify(state.hist));}
+function trendOf(id,delayMin){const h=state.hist[id];if(!h)return null;const now=Date.now();
+ const old=h.find(x=>now-x[0]<=3600e3&&now-x[0]>=4*60e3);if(!old)return null;
+ return {from:Math.round(old[1]/60),mins:Math.round((now-old[0])/60000),change:delayMin-Math.round(old[1]/60)};}
 const isDead=c=>!!state.dead[c.key];
 let deadTimer=null;
 function markDead(c,imgEl){if(state.dead[c.key])return;state.dead[c.key]=Date.now();saveDead();
@@ -320,6 +330,7 @@ async function fetchIncidents(){
   }));
   for(const list of res)for(const inc of list){const id=inc.properties&&inc.properties.id;if(id&&!seen.has(id))seen.set(id,inc);}
   state.incidents={trip:t.id,list:[...seen.values()],requests:boxes.length};state.incError='';state.incAt=Date.now();
+  recordHistory(state.incidents.list);
  }catch(e){state.incError=e.message||'Could not load delays.';}
  render();
 }
@@ -375,8 +386,14 @@ function analyze(raw,t){
   unconfirmed=true;why2=crossStreet?`on ${p.from} (cross street or ramp), no delay`:`open for ${Math.round(ageMin/60)} h with no delay: likely long-term work`;}
  if(unconfirmed)sev=0;
  const fresh=!unconfirmed&&!ramp&&ageMin!==null&&ageMin<=45&&(cat===1||cat===8||closed||delayMin>=10||(laneClosed&&delayMin>=5));
- const score=unconfirmed?0:ramp?Math.min(delayMin,5):delayMin+(closed?60:0)+(fresh?15:0)+(cat===1?5:0);
- return {raw,p,road,dir,pos,head,tail,cat,mag,delayMin,lenMi:(p.length||0)/1609.34,ageMin,lastRep,desc,closed,laneClosed,sev,fresh,score,unconfirmed,prob,why:why2,ramp,sec:sectionIndex(t,pos)};
+ // Minor: shoulder-only breakdowns, road work, or anything over an hour old that is barely slowing traffic.
+ const shoulderOnly=desc.some(d=>/shoulder/i.test(d))&&!desc.some(d=>/lanes? (closed|blocked)|all lanes|road closed/i.test(d));
+ const tr=trendOf(p.id,delayMin);
+ const growing=!!tr&&tr.change>=3&&delayMin>=5, easing=!!tr&&tr.change<=-3;
+ const minor=!closed&&!growing&&delayMin<3&&(cat===14||shoulderOnly||cat===9||(ageMin!==null&&ageMin>60)||ramp);
+ if(minor)sev=0;
+ const score=minor?0:unconfirmed?0:growing?delayMin+10:ramp?Math.min(delayMin,5):delayMin+(closed?60:0)+(fresh?15:0)+(cat===1?5:0);
+ return {raw,p,road,dir,pos,head,tail,cat,mag,delayMin,lenMi:(p.length||0)/1609.34,ageMin,lastRep,desc,closed,laneClosed,sev,fresh,score,unconfirmed,prob,why:why2,ramp,minor,tr,growing,easing,sec:sectionIndex(t,pos)};
 }
 // FDOT's direction field is unreliable in some districts (nearly all 'N'), so a camera pointed your way
 // only wins if it is about as close as the nearest camera overall.
@@ -413,7 +430,8 @@ function render(){
  const have=key&&state.incidents&&state.incidents.trip===t.id;
  const incs=have?state.incidents.list.map(r=>analyze(r,t)).filter(Boolean):[];
  const mine=(i)=>!i.dir||i.dir===travelDir(t,dir,i.road);
- const ahead=incs.filter(i=>mine(i)&&!i.unconfirmed),other=incs.filter(i=>!mine(i)&&!i.unconfirmed),maybe=incs.filter(i=>mine(i)&&i.unconfirmed);
+ const quiet=i=>i.unconfirmed||i.minor;
+ const ahead=incs.filter(i=>mine(i)&&!quiet(i)),other=incs.filter(i=>!mine(i)&&!quiet(i)),maybe=incs.filter(i=>mine(i)&&quiet(i));
  const order=sectionOrder(t,dir);
  // section severity per road
  const sev={};for(const r of roads){sev[r]=Array(t.stops.length-1).fill(have?0:-1);}
@@ -445,9 +463,11 @@ function render(){
  else if(!have){list.append(el('p',{class:'small',text:'Loading reported delays…'}));}
  else{
   const sorted=ahead.slice().sort((a,b)=>increasing(t,dir)?a.pos-b.pos:b.pos-a.pos);
-  if(!sorted.length)list.append(el('p',{text:'No problems reported in your direction right now.'}));
-  for(const i of sorted)list.append(incCard(t,dir,i));
-  if(maybe.length){const d=el('details',{class:'other'},el('summary',{text:`${maybe.length} planned or unconfirmed (long-term work, ramp or cross-street closures, "probable" reports; no real delay)`}));for(const i of maybe)d.append(incCard(t,dir,i));list.append(d);}
+  const look=sorted.filter(i=>i.sev===2||i.fresh||i.growing),slow=sorted.filter(i=>!look.includes(i));
+  if(!sorted.length)list.append(el('p',{text:'No problems that matter in your direction right now.'}));
+  if(look.length){list.append(el('h3',{class:'grouphead',text:'Needs a look: big, new or getting worse'}));for(const i of look)list.append(incCard(t,dir,i));}
+  if(slow.length){list.append(el('h3',{class:'grouphead',text:look.length?'Other slowdowns':'Slowdowns'}));for(const i of slow)list.append(incCard(t,dir,i));}
+  if(maybe.length){const d=el('details',{class:'other'},el('summary',{text:`${maybe.length} minor or background (shoulder breakdowns, old incidents with no real delay, ramps, planned work)`}));for(const i of maybe)d.append(incCard(t,dir,i));list.append(d);}
   if(other.length){const d=el('details',{class:'other'},el('summary',{text:`${other.length} reported on the other side of the road`}));for(const i of other)d.append(incCard(t,dir,i,true));list.append(d);}
  }
  renderCams(t,dir,roads,sev,have);
@@ -464,6 +484,9 @@ function incCard(t,dir,i,otherSide){
  card.append(el('div',{class:'where',text:where||(near?`Near ${near.c.desc}`:'')}));
  const b=el('div',{class:'badges'});
  if(i.fresh)b.append(el('span',{class:'badge fresh',text:'NEW & SERIOUS: can get worse fast'}));
+ if(i.growing)b.append(el('span',{class:'badge fresh',text:`↑ GROWING: ${i.tr.from} → ${i.delayMin} min in ${i.tr.mins} min`}));
+ else if(i.easing)b.append(el('span',{class:'badge',text:`↓ easing: ${i.tr.from} → ${i.delayMin} min`}));
+ if(i.minor&&!i.unconfirmed)b.append(el('span',{class:'badge',text:i.ageMin>60?`Ongoing ${ago(i.ageMin).replace(' ago','')}, little effect on traffic`:'Little effect on traffic'}));
  if(i.unconfirmed)b.append(el('span',{class:'badge',text:'UNCONFIRMED / PLANNED: '+i.why}));
  if(i.closed)b.append(el('span',{class:'badge '+(i.unconfirmed?'':'red'),text:i.unconfirmed?'closure reported':'ROAD CLOSED'}));
  else if(i.laneClosed)b.append(el('span',{class:'badge yel',text:'LANE(S) CLOSED'}));

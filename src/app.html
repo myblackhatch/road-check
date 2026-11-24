@@ -174,7 +174,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.3';
+const APP_VERSION='4.4';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -348,9 +348,17 @@ function analyze(raw,t){
  const desc=(p.events||[]).map(e=>e.description).filter(Boolean);
  const closed=cat===8||desc.some(d=>/road closed|all lanes (are )?(closed|blocked)|closed to (all )?traffic/i.test(d));
  const laneClosed=!closed&&(cat===7||desc.some(d=>/lanes? (closed|blocked)/i.test(d)));
+ // TomTom's 'magnitude' says how slow traffic is, not for how long, so red needs a real delay (or a closure).
+ // Reports that sit only on an exit/entry ramp (neither end names the highway) are capped at yellow.
+ const ROADRX={I95:/I-?\s?95\b/i,TPK:/turnpike|tpke|\b(FL|SR)-?\s?91\b/i,JTB:/\b(FL|SR)-?\s?202\b|butler|JTB/i}[road];
+ const ends=[p.from||'',p.to||''];
+ const isExit=e=>/\bexit\b|\bramp\b|\bentry\b/i.test(e);
+ // ramp = one end is an exit/ramp and the other is a plain street (between two exits = the highway itself)
+ const ramp=ends[0]&&ends[1]&&isExit(ends[0])!==isExit(ends[1])&&!ends.some(e=>ROADRX.test(e))&&(p.length||0)<2000&&!closed;
  let sev=0;
- if(cat===8||closed||mag===3||mag===4||delayMin>=15)sev=2;
- else if(mag===2||delayMin>=5||[1,7,11,14].includes(cat)||(mag===1&&delayMin>=2)||(cat===6&&delayMin>=2))sev=1;
+ if(cat===8||closed||delayMin>=15||((mag===3||mag===4)&&delayMin>=5))sev=2;
+ else if(mag>=2||delayMin>=5||[1,7,11,14].includes(cat)||(mag===1&&delayMin>=2)||(cat===6&&delayMin>=2))sev=1;
+ if(ramp)sev=Math.min(sev,1);
  if(cat===9&&delayMin<2&&mag<2)sev=0;
  // TomTom includes scheduled work and ramp closures, often marked 'probable'. Those go in a separate,
  // collapsed list and do not turn the strip red unless traffic is actually being delayed.
@@ -366,9 +374,9 @@ function analyze(raw,t){
  if(!unconfirmed&&(closed||[7,8,9].includes(cat))&&delayMin<5&&(longRunning||crossStreet)){
   unconfirmed=true;why2=crossStreet?`on ${p.from} (cross street or ramp), no delay`:`open for ${Math.round(ageMin/60)} h with no delay: likely long-term work`;}
  if(unconfirmed)sev=0;
- const fresh=!unconfirmed&&ageMin!==null&&ageMin<=45&&(cat===1||cat===8||closed||mag===3||(laneClosed&&mag>=2));
- const score=unconfirmed?0:delayMin+(closed?60:0)+(fresh?15:0)+(cat===1?5:0);
- return {raw,p,road,dir,pos,head,tail,cat,mag,delayMin,lenMi:(p.length||0)/1609.34,ageMin,lastRep,desc,closed,laneClosed,sev,fresh,score,unconfirmed,prob,why:why2,sec:sectionIndex(t,pos)};
+ const fresh=!unconfirmed&&!ramp&&ageMin!==null&&ageMin<=45&&(cat===1||cat===8||closed||delayMin>=10||(laneClosed&&delayMin>=5));
+ const score=unconfirmed?0:ramp?Math.min(delayMin,5):delayMin+(closed?60:0)+(fresh?15:0)+(cat===1?5:0);
+ return {raw,p,road,dir,pos,head,tail,cat,mag,delayMin,lenMi:(p.length||0)/1609.34,ageMin,lastRep,desc,closed,laneClosed,sev,fresh,score,unconfirmed,prob,why:why2,ramp,sec:sectionIndex(t,pos)};
 }
 // FDOT's direction field is unreliable in some districts (nearly all 'N'), so a camera pointed your way
 // only wins if it is about as close as the nearest camera overall.
@@ -459,7 +467,8 @@ function incCard(t,dir,i,otherSide){
  if(i.unconfirmed)b.append(el('span',{class:'badge',text:'UNCONFIRMED / PLANNED: '+i.why}));
  if(i.closed)b.append(el('span',{class:'badge '+(i.unconfirmed?'':'red'),text:i.unconfirmed?'closure reported':'ROAD CLOSED'}));
  else if(i.laneClosed)b.append(el('span',{class:'badge yel',text:'LANE(S) CLOSED'}));
- if(MAG[i.mag])b.append(el('span',{class:'badge '+(i.mag===3?'red':'yel'),text:MAG[i.mag]+' delay'}));
+ if(i.ramp)b.append(el('span',{class:'badge',text:'ON THE EXIT/ENTRY RAMP, not the highway'}));
+ if(MAG[i.mag]){const big=i.mag===3&&i.delayMin>=5;b.append(el('span',{class:'badge '+(big?'red':'yel'),text:i.mag===3&&!big?'Stopped traffic, short delay':MAG[i.mag]+' delay'}));}
  if(i.p.probabilityOfOccurrence&&i.p.probabilityOfOccurrence!=='certain')b.append(el('span',{class:'badge',text:i.p.probabilityOfOccurrence.replace('_',' ')}));
  if(b.childNodes.length)card.append(b);
  const facts=[];

@@ -70,6 +70,8 @@ main{padding-top:12px}
 #meCard h2{font-size:17px}
 .actions select{min-height:44px;border-radius:9px;border:1px solid #6a91ad;background:#0b1424;color:#effcff;padding:8px;flex:1 1 220px;max-width:100%}
 .rel{font-weight:800;color:#a7efff;font-size:14px;margin:4px 0}.rel.in{color:#ffb4ae}.rel.past{color:var(--muted);font-weight:600}
+.eta{border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px}
+.etahead{font-size:19px;font-weight:800;color:#a7efff;margin-bottom:4px}.etarow{margin:6px 0}.etarow b{font-size:17px}
 .grouphead{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
 .other summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
 details.sec{border:1px solid var(--border);border-radius:12px;margin:8px 0;background:var(--panel)}
@@ -188,7 +190,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.8';
+const APP_VERSION='4.9';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -468,6 +470,38 @@ function renderMe(t,dir,me){const box=$('meCard');box.replaceChildren();
  if(state.me)row.append(el('button',{type:'button',text:'Clear',onclick:()=>{state.me=null;state.meMsg='';render();}}));
  box.append(row);if(state.meMsg)box.append(el('p',{class:'status',text:state.meMsg}));}
 
+/* ---------- ETA: miles left at highway speed + reported delays still ahead ---------- */
+const SPEED={I95:65,TPK:68,JTB:55};
+function legMiles(t,road){const L=milesLine(t,road);return L.cum[L.cum.length-1]||0;}
+function eta(t,dir,useRoads,me,incs){
+ const inc=increasing(t,dir),meOn=!!(me&&!me.off);let miles=0,driveMin=0,base=0;
+ for(const l of t.legs){if(!useRoads.includes(l.road))continue;const len=legMiles(t,l.road);
+  let rem=len;
+  if(meOn){const meMi=t.parallel?(me.by[l.road]||{}).mi:me.mi;
+   if(meMi!=null){const at=t.parallel?meMi:meMi-base; rem=inc?len-Math.max(0,Math.min(len,at)):Math.max(0,Math.min(len,at));}}
+  miles+=rem;driveMin+=rem/SPEED[l.road]*60;if(!t.parallel)base+=len;}
+ let delayMin=0,closures=0;
+ for(const i of incs){if(!useRoads.includes(i.road)||i.unconfirmed)continue;
+  if(i.dir&&i.dir!==travelDir(t,dir,i.road))continue;
+  if(i.rel&&i.rel.far<-0.3)continue; // already behind you
+  delayMin+=i.delayMin;if(i.closed)closures++;}
+ return {miles,driveMin,delayMin,closures,total:driveMin+delayMin,fromStart:!meOn};}
+const hm=m=>{m=Math.round(m);return m<60?`${m} min`:`${Math.floor(m/60)} h ${String(m%60).padStart(2,'0')} min`;};
+const clock=m=>new Date(Date.now()+m*60000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+function etaBlock(t,dir,me,incs,have){
+ const dest=(increasing(t,dir)?t.stops[t.stops.length-1]:t.stops[0]).name;
+ const box=el('div',{class:'eta'});
+ const note=(e)=>`${Math.round(e.miles)} mi at highway speed (${hm(e.driveMin)})`+(have?` + ${e.delayMin} min of reported delays ahead`:' (no delay data yet)')+(e.closures?` + ${e.closures} closure${e.closures>1?'s':''} with unknown delay`:'');
+ if(t.parallel){
+  box.append(el('div',{class:'etahead',text:`🕒 Time to ${dest}${me&&!me.off?' from where you are':''}`}));
+  for(const r of t.legs.map(l=>l.road)){const e=eta(t,dir,[r],me,incs);
+   box.append(el('div',{class:'etarow'},el('b',{text:`${ROADS[r].label}: ≈ ${hm(e.total)}`}),el('span',{text:` · arrive ≈ ${clock(e.total)}`}),el('div',{class:'small',text:note(e)})));}
+ }else{const e=eta(t,dir,t.legs.map(l=>l.road),me,incs);
+  box.append(el('div',{class:'etahead',text:`🕒 About ${hm(e.total)} to ${dest} · arrive ≈ ${clock(e.total)}`}),
+   el('div',{class:'small',text:note(e)+(e.fromStart?'. Counted from the start of the route; set your spot for time left.':'.')}));}
+ box.append(el('div',{class:'small',text:'Rough estimate: assumes today’s reported delays hold. Updates on every refresh.'}));
+ return box;}
+
 /* ---------- rendering ---------- */
 function el(tag,attrs,...kids){const e=document.createElement(tag);if(attrs)for(const[k,v]of Object.entries(attrs)){if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v);}
  for(const k of kids)if(k!=null&&k!==false)e.append(k);return e;}
@@ -507,6 +541,7 @@ function render(){
  for(const i of aheadNow){sev[i.road][i.sec]=Math.max(sev[i.road][i.sec],i.sev);}
 
  renderSummary(t,dir,have,aheadNow,sev,roads);
+ $('summary').prepend(etaBlock(t,dir,me,incs,have));
  // strip
  const strip=$('strip');strip.replaceChildren();
  for(const r of roads){

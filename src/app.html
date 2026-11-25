@@ -59,7 +59,12 @@ main{padding-top:12px}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb span{position:absolute;left:0;right:0;bottom:0;background:rgba(6,12,24,.85);font-size:11px;padding:4px 6px;text-align:left;line-height:1.25}
 .thumb.err img{visibility:hidden}.thumb.err:before{content:"Image unavailable";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
-.cell.past{opacity:.28}.cell.here{outline:3px solid #fff;outline-offset:1px}
+.cell.past{opacity:.28}
+.track{position:relative;height:10px;border-radius:5px;background:#26354d;margin:6px 0 4px}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,#2f5a76,#62d2ef)}
+.track .tick{position:absolute;top:-3px;width:4px;height:16px;margin-left:-2px;border-radius:2px;background:#c79a2a}.track .tick.s2{background:#ff6b61}
+.track .pin{position:absolute;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#fff;border:4px solid #62d2ef;box-shadow:0 0 0 4px rgba(98,210,239,.25)}
+.trackrow .lbl{color:#a7efff!important}.cell.here{outline:3px solid #fff;outline-offset:1px}
 #meCard h2{font-size:17px}
 .actions select{min-height:44px;border-radius:9px;border:1px solid #6a91ad;background:#0b1424;color:#effcff;padding:8px;flex:1 1 220px;max-width:100%}
 .rel{font-weight:800;color:#a7efff;font-size:14px;margin:4px 0}.rel.in{color:#ffb4ae}.rel.past{color:var(--muted);font-weight:600}
@@ -181,7 +186,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.6';
+const APP_VERSION='4.7';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -512,6 +517,18 @@ function render(){
    cells.append(el('button',{type:'button',class:'cell '+(s<0?'na':'s'+s)+(isPast(i)?' past':'')+(i===meSec&&(!t.parallel||r===me.road)?' here':''),title:name+(i===meSec?' (you are here)':''),'aria-label':`${t.parallel?ROADS[r].label+', ':''}${name}: ${s<0?'no delay data':['clear','slow or incident','major or closed'][s]}`,onclick:()=>jumpTo(r,i)}));
   }
   row.append(cells);strip.append(row);
+ }
+ // position bar: where you are between the blocks, plus ticks for problems still ahead
+ if(meOn){
+  const n=order.length;
+  const frac=(road,lat,lon)=>{const p=t.pos(road,lat,lon),i=sectionIndex(t,p),a=t.stops[i].pos,b=t.stops[i+1].pos;
+   let f=Math.max(0,Math.min(1,(p-a)/(b-a||1)));if(!increasing(t,dir))f=1-f;return Math.max(0,Math.min(100,(order.indexOf(i)+f)/n*100));};
+  const mePct=frac(me.road,state.me.lat,state.me.lon);
+  const track=el('div',{class:'track',role:'img','aria-label':`You are about ${Math.round(mePct)}% of the way along this route`});
+  track.append(el('div',{class:'fill',style:`width:${mePct}%`}));
+  for(const i of aheadNow)if(i.sev>=1){const pc=frac(i.road,i.head[1],i.head[0]);track.append(el('div',{class:'tick s'+i.sev,style:`left:${pc}%`,title:CAT[i.cat]||'Problem'}));}
+  track.append(el('div',{class:'pin',style:`left:${mePct}%`}));
+  strip.append(el('div',{class:'striprow trackrow'},el('span',{class:'lbl',text:'📍 You'}),track));
  }
  const first=t.stops[order.length&&increasing(t,dir)?0:t.stops.length-1],last=t.stops[increasing(t,dir)?t.stops.length-1:0];
  strip.append(el('div',{class:'stops'},el('span',{text:first.name}),el('span',{text:'→'}),el('span',{text:last.name})));

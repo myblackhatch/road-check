@@ -16,7 +16,7 @@ assert '__CAMERAS__' not in html
   "icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png"},
            {"src":"icon-512-maskable.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}, indent=1))
 (D/'sw.js').write_text("""// Road Check service worker: keeps the app itself available; never caches camera images or traffic data.
-const SHELL='road-check-v4.5';
+const SHELL='road-check-v4.6';
 const FILES=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(SHELL).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==SHELL).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});

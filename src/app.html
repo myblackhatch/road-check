@@ -59,6 +59,10 @@ main{padding-top:12px}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb span{position:absolute;left:0;right:0;bottom:0;background:rgba(6,12,24,.85);font-size:11px;padding:4px 6px;text-align:left;line-height:1.25}
 .thumb.err img{visibility:hidden}.thumb.err:before{content:"Image unavailable";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.cell.past{opacity:.28}.cell.here{outline:3px solid #fff;outline-offset:1px}
+#meCard h2{font-size:17px}
+.actions select{min-height:44px;border-radius:9px;border:1px solid #6a91ad;background:#0b1424;color:#effcff;padding:8px;flex:1 1 220px;max-width:100%}
+.rel{font-weight:800;color:#a7efff;font-size:14px;margin:4px 0}.rel.in{color:#ffb4ae}.rel.past{color:var(--muted);font-weight:600}
 .grouphead{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
 .other summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
 details.sec{border:1px solid var(--border);border-radius:12px;margin:8px 0;background:var(--panel)}
@@ -117,6 +121,8 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 <main class="shell">
  <section class="card summary" id="summary" aria-live="polite"><h2>Checking the road…</h2></section>
 
+ <section class="card" id="meCard"></section>
+
  <section class="card" id="stripCard">
   <h2>Section by section</h2>
   <div class="strip" id="strip"></div>
@@ -167,7 +173,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
   <h3 style="margin:16px 0 4px;font-size:16px">Auto refresh</h3>
   <label class="small"><input type="checkbox" id="autoInc" checked> Re-check delays every 5 minutes while the app is open</label>
   <h3 style="margin:16px 0 4px;font-size:16px">Privacy</h3>
-  <p class="small">No GPS, no accounts, no tracking. The app talks to: FDOT's camera list (ArcGIS), FDOT camera images (divas.cloud), and TomTom if you add a key. Each of those can see your IP address, like any website.</p>
+  <p class="small">No accounts, no tracking. Your location is only used if you tap "Use my location once": it stays in the app on this phone, is never sent to FDOT or TomTom, and is forgotten when you close the app. The app talks to: FDOT's camera list (ArcGIS), FDOT camera images (divas.cloud), and TomTom if you add a key. Each of those can see your IP address, like any website.</p>
   <div class="actions"><button type="button" id="clearCache">Reload camera list</button></div>
   <p class="small" id="versionLine"></p>
  </div>
@@ -175,7 +181,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.5';
+const APP_VERSION='4.6';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -406,6 +412,55 @@ function nearestCam(t,road,pt,want){
  return bestAny?{...bestAny,match:bestAny.c.dir===want}:null;
 }
 
+/* ---------- where am I (memory only, never saved or sent) ---------- */
+state.me=null;state.meMsg='';state.lineCache={};
+// Distances run along a smoothed centerline: cameras alternate between the two sides of the road,
+// so measuring camera-to-camera would zigzag and overstate miles. Points are averaged in ~4 km bins.
+function milesLine(t,road){const k=t.id+'|'+road+'|'+state.cams.length;if(state.lineCache[k])return state.lineCache[k];
+ const bins=new Map();
+ for(const c of camsFor(t,road)){const b=Math.floor(t.pos(road,c.lat,c.lon)/0.04);const v=bins.get(b)||[0,0,0];v[0]+=c.lon;v[1]+=c.lat;v[2]++;bins.set(b,v);}
+ const pts=[...bins.entries()].sort((x,y)=>x[0]-y[0]).map(([,v])=>[v[0]/v[2],v[1]/v[2]]);
+ const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+km(pts[i-1],pts[i])*0.621371);
+ return state.lineCache[k]={pts,cum,fine:lineFor(t,road)};}
+function projectMi(L,p){const kx=111.32*Math.cos(p[1]*Math.PI/180),ky=110.57;let best={d:Infinity,mi:0};
+ for(let i=0;i<L.pts.length-1;i++){const a=L.pts[i],b=L.pts[i+1];const ax=(a[0]-p[0])*kx,ay=(a[1]-p[1])*ky,bx=(b[0]-p[0])*kx,by=(b[1]-p[1])*ky;
+  const dx=bx-ax,dy=by-ay,LL=dx*dx+dy*dy;let u=LL?-(ax*dx+ay*dy)/LL:0;u=Math.max(0,Math.min(1,u));const d=Math.hypot(ax+u*dx,ay+u*dy);
+  if(d<best.d)best={d,mi:L.cum[i]+u*(L.cum[i+1]-L.cum[i])};}
+ return best;}
+function alongMi(t,road,lon,lat){const L=milesLine(t,road);if(L.pts.length<2)return null;const r=projectMi(L,[lon,lat]);r.d=distToLine([lon,lat],L.fine);let base=0;
+ if(!t.parallel)for(const l of t.legs){if(l.road===road)break;const P=milesLine(t,l.road);base+=P.cum[P.cum.length-1]||0;}
+ return {mi:base+r.mi,offKm:r.d};}
+function meInfo(t){const m=state.me;if(!m)return null;let best=null;const by={};
+ for(const l of t.legs){const a=alongMi(t,l.road,m.lon,m.lat);if(!a)continue;by[l.road]=a;if(!best||a.offKm<best.offKm)best={road:l.road,...a};}
+ if(!best)return null;const near=nearestCam(t,best.road,[m.lon,m.lat],'');
+ return {...best,by,off:best.offKm>3,sec:sectionIndex(t,t.pos(best.road,m.lat,m.lon)),mm:near?mmOf(near.c):null,nearDesc:near?near.c.desc:'',ageMin:Math.round((Date.now()-m.at)/60000)};}
+function relTo(t,dir,i,me){const sg=increasing(t,dir)?1:-1;const meMi=t.parallel?(me.by[i.road]||{}).mi:me.mi;if(meMi==null)return null;
+ const h=alongMi(t,i.road,i.head[0],i.head[1]),tl=alongMi(t,i.road,i.tail[0],i.tail[1]);if(!h||!tl)return null;
+ const rh=(h.mi-meMi)*sg,rt=(tl.mi-meMi)*sg;return {near:Math.min(rh,rt),far:Math.max(rh,rt)};}
+function locateOnce(){
+ if(!('geolocation' in navigator)){state.meMsg='This browser can’t share location. Pick a spot from the list instead.';render();return;}
+ state.meMsg='Getting your location…';render();
+ navigator.geolocation.getCurrentPosition(p=>{state.me={lat:p.coords.latitude,lon:p.coords.longitude,at:Date.now(),src:'gps'};state.meMsg='';render();},
+  e=>{state.meMsg=e.code===1?'Location permission was declined. You can pick a spot from the list instead.':'Couldn’t get your location. Try again or pick a spot from the list.';render();},
+  {enableHighAccuracy:true,timeout:15000,maximumAge:60000});}
+function renderMe(t,dir,me){const box=$('meCard');box.replaceChildren();
+ if(!state.me)box.append(el('h2',{text:'📍 Where are you?'}),el('p',{class:'small',text:'Set your spot to see how far ahead each problem is and dim what is behind you. Nothing is saved or sent anywhere. Passengers or when stopped only.'}));
+ else if(!me||me.off)box.append(el('h2',{text:'📍 You seem to be off this route'}),el('p',{class:'small',text:me?`About ${Math.round(me.offKm*0.621)} mi from the nearest camera on this route, so distances are hidden.`:'Distances are hidden.'}));
+ else box.append(el('h2',{text:`📍 You: ${me.mm!=null?'near MM '+Math.round(me.mm):'near '+me.nearDesc} on ${ROADS[me.road].label}`}),
+  el('p',{class:'small',text:`Set ${ago(me.ageMin)} (${state.me.src==='gps'?'location, once':'picked from list'})${me.ageMin>=20?'. You have probably moved, so update it.':''}`}));
+ const row=el('div',{class:'actions'});
+ row.append(el('button',{type:'button',text:state.me?'📍 Update with my location':'📍 Use my location once',onclick:locateOnce}));
+ const sel=el('select',{'aria-label':'Pick the mile marker or camera you are near'});sel.append(el('option',{value:'',text:'…or pick where you are'}));
+ const cams=t.legs.flatMap(l=>camsFor(t,l.road)).sort((a,b)=>{const pa=t.pos(a.road,a.lat,a.lon),pb=t.pos(b.road,b.lat,b.lon);return increasing(t,dir)?pa-pb:pb-pa;});
+ const seen=new Set();
+ for(const c of cams){const mm=mmOf(c);const k=c.road+'|'+(mm!=null?Math.round(mm):c.desc);if(seen.has(k))continue;seen.add(k);
+  sel.append(el('option',{value:c.key,text:(mm!=null?`MM ${Math.round(mm)} · `:'')+`${ROADS[c.road].label} · ${c.desc}`}));}
+ sel.onchange=()=>{const c=state.cams.find(x=>x.key===sel.value);if(c){state.me={lat:c.lat,lon:c.lon,at:Date.now(),src:'manual'};state.meMsg='';render();}};
+ row.append(sel);
+ if(me&&!me.off)row.append(el('button',{type:'button',text:'Cameras near me',onclick:()=>jumpTo(me.road,me.sec)}));
+ if(state.me)row.append(el('button',{type:'button',text:'Clear',onclick:()=>{state.me=null;state.meMsg='';render();}}));
+ box.append(row);if(state.meMsg)box.append(el('p',{class:'status',text:state.meMsg}));}
+
 /* ---------- rendering ---------- */
 function el(tag,attrs,...kids){const e=document.createElement(tag);if(attrs)for(const[k,v]of Object.entries(attrs)){if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v);}
  for(const k of kids)if(k!=null&&k!==false)e.append(k);return e;}
@@ -432,12 +487,19 @@ function render(){
  const mine=(i)=>!i.dir||i.dir===travelDir(t,dir,i.road);
  const quiet=i=>i.unconfirmed||i.minor;
  const ahead=incs.filter(i=>mine(i)&&!quiet(i)),other=incs.filter(i=>!mine(i)&&!quiet(i)),maybe=incs.filter(i=>mine(i)&&quiet(i));
+ const me=meInfo(t),meOn=!!(me&&!me.off);
+ for(const i of incs)i.rel=meOn?relTo(t,dir,i,me):null;
+ const behindMe=i=>i.rel&&i.far<-0.3;
+ for(const i of incs)if(i.rel){i.far=i.rel.far;i.near=i.rel.near;}
+ const passed=ahead.filter(behindMe);const aheadNow=ahead.filter(i=>!behindMe(i));
+ renderMe(t,dir,me);
  const order=sectionOrder(t,dir);
+ const meSec=meOn?me.sec:null,isPast=s=>meSec!=null&&(increasing(t,dir)?s<meSec:s>meSec);
  // section severity per road
  const sev={};for(const r of roads){sev[r]=Array(t.stops.length-1).fill(have?0:-1);}
- for(const i of ahead){sev[i.road][i.sec]=Math.max(sev[i.road][i.sec],i.sev);}
+ for(const i of aheadNow){sev[i.road][i.sec]=Math.max(sev[i.road][i.sec],i.sev);}
 
- renderSummary(t,dir,have,ahead,sev,roads);
+ renderSummary(t,dir,have,aheadNow,sev,roads);
  // strip
  const strip=$('strip');strip.replaceChildren();
  for(const r of roads){
@@ -447,7 +509,7 @@ function render(){
   for(const i of order){
    let s=t.parallel?sev[r][i]:Math.max(...roads.map(x=>sev[x][i]));
    const name=sectionName(t,i,dir);
-   cells.append(el('button',{type:'button',class:'cell '+(s<0?'na':'s'+s),title:name,'aria-label':`${t.parallel?ROADS[r].label+', ':''}${name}: ${s<0?'no delay data':['clear','slow or incident','major or closed'][s]}`,onclick:()=>jumpTo(r,i)}));
+   cells.append(el('button',{type:'button',class:'cell '+(s<0?'na':'s'+s)+(isPast(i)?' past':'')+(i===meSec&&(!t.parallel||r===me.road)?' here':''),title:name+(i===meSec?' (you are here)':''),'aria-label':`${t.parallel?ROADS[r].label+', ':''}${name}: ${s<0?'no delay data':['clear','slow or incident','major or closed'][s]}`,onclick:()=>jumpTo(r,i)}));
   }
   row.append(cells);strip.append(row);
  }
@@ -462,11 +524,12 @@ function render(){
  else if(state.incError){list.append(el('p',{class:'status',text:state.incError}));}
  else if(!have){list.append(el('p',{class:'small',text:'Loading reported delays…'}));}
  else{
-  const sorted=ahead.slice().sort((a,b)=>increasing(t,dir)?a.pos-b.pos:b.pos-a.pos);
+  const sorted=aheadNow.slice().sort((a,b)=>increasing(t,dir)?a.pos-b.pos:b.pos-a.pos);
   const look=sorted.filter(i=>i.sev===2||i.fresh||i.growing),slow=sorted.filter(i=>!look.includes(i));
   if(!sorted.length)list.append(el('p',{text:'No problems that matter in your direction right now.'}));
   if(look.length){list.append(el('h3',{class:'grouphead',text:'Needs a look: big, new or getting worse'}));for(const i of look)list.append(incCard(t,dir,i));}
   if(slow.length){list.append(el('h3',{class:'grouphead',text:look.length?'Other slowdowns':'Slowdowns'}));for(const i of slow)list.append(incCard(t,dir,i));}
+  if(passed.length){const d=el('details',{class:'other'},el('summary',{text:`${passed.length} already behind you`}));for(const i of passed)d.append(incCard(t,dir,i));list.append(d);}
   if(maybe.length){const d=el('details',{class:'other'},el('summary',{text:`${maybe.length} minor or background (shoulder breakdowns, old incidents with no real delay, ramps, planned work)`}));for(const i of maybe)d.append(incCard(t,dir,i));list.append(d);}
   if(other.length){const d=el('details',{class:'other'},el('summary',{text:`${other.length} reported on the other side of the road`}));for(const i of other)d.append(incCard(t,dir,i,true));list.append(d);}
  }
@@ -482,6 +545,10 @@ function incCard(t,dir,i,otherSide){
  card.append(el('h3',{text:`${type} · ${ROADS[i.road].label}${i.dir?' '+DIRWORD[i.dir]:''}`}));
  const where=[i.p.from&&i.p.to?`${i.p.from} → ${i.p.to}`:(i.p.from||i.p.to||''),mm?`near MM ${mm}`:'' ].filter(Boolean).join(' · ');
  card.append(el('div',{class:'where',text:where||(near?`Near ${near.c.desc}`:'')}));
+ if(i.rel&&!otherSide){const n=i.rel.near,f=i.rel.far;
+  if(f<-0.3)card.append(el('div',{class:'rel past',text:'Behind you'}));
+  else if(n<=0.3)card.append(el('div',{class:'rel in',text:'📍 You are at or in this one now'}));
+  else card.append(el('div',{class:'rel',text:`📍 ${n<10?n.toFixed(1):Math.round(n)} mi ahead of you · about ${Math.max(1,Math.round(n))} min at highway speed`}));}
  const b=el('div',{class:'badges'});
  if(i.fresh)b.append(el('span',{class:'badge fresh',text:'NEW & SERIOUS: can get worse fast'}));
  if(i.growing)b.append(el('span',{class:'badge fresh',text:`↑ GROWING: ${i.tr.from} → ${i.delayMin} min in ${i.tr.mins} min`}));

@@ -190,7 +190,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 0 40px;border-top:1px soli
 
 <script>
 'use strict';
-const APP_VERSION='4.9';
+const APP_VERSION='4.10';
 // [road, FDOT id, description, direction, lat, lon, image channel] — backup copy of FDOT's FL511 camera layer.
 const BAKED=__CAMERAS__;
 const BAKED_DATE='Nov 24, 2026';
@@ -350,6 +350,7 @@ async function fetchIncidents(){
  render();
 }
 
+const ROAD_RX={I95:/I-?\s?95\b/i,TPK:/turnpike|tpke|\b(FL|SR)-?\s?91\b/i,JTB:/\b(FL|SR)-?\s?202\b|butler|JTB/i};
 function analyze(raw,t){
  const p=raw.properties||{},g=raw.geometry||{};
  let coords=g.type==='Point'?[g.coordinates]:(g.coordinates||[]);
@@ -360,7 +361,10 @@ function analyze(raw,t){
  for(const l of t.legs){const line=lineFor(t,l.road);if(line.length<2)continue;
   const d=Math.min(distToLine(head,line),distToLine(tail,line));
   const named=nums.length>0&&roadNamed(nums,l.road);
-  const ok=named?d<=2:(nums.length===0&&d<=0.25);
+  // No road number from TomTom: only accept it if its from/to actually names this highway.
+  // (Side streets like the Town Center or a mall access road sit within a few hundred meters of JTB/I-95.)
+  const ends=[p.from||'',p.to||''];
+  const ok=named?d<=2:(nums.length===0&&d<=0.25&&ends.some(e=>ROAD_RX[l.road].test(e)));
   if(ok&&(!best||d<best.d))best={road:l.road,d};}
  if(!best)return null;
  const road=best.road;
@@ -376,7 +380,7 @@ function analyze(raw,t){
  const laneClosed=!closed&&(cat===7||desc.some(d=>/lanes? (closed|blocked)/i.test(d)));
  // TomTom's 'magnitude' says how slow traffic is, not for how long, so red needs a real delay (or a closure).
  // Reports that sit only on an exit/entry ramp (neither end names the highway) are capped at yellow.
- const ROADRX={I95:/I-?\s?95\b/i,TPK:/turnpike|tpke|\b(FL|SR)-?\s?91\b/i,JTB:/\b(FL|SR)-?\s?202\b|butler|JTB/i}[road];
+ const ROADRX=ROAD_RX[road];
  const ends=[p.from||'',p.to||''];
  const isExit=e=>/\bexit\b|\bramp\b|\bentry\b/i.test(e);
  // ramp = one end is an exit/ramp and the other is a plain street (between two exits = the highway itself)
@@ -580,7 +584,13 @@ function render(){
  else if(!have){list.append(el('p',{class:'small',text:'Loading reported delays…'}));}
  else{
   const sorted=aheadNow.slice().sort((a,b)=>increasing(t,dir)?a.pos-b.pos:b.pos-a.pos);
-  const look=sorted.filter(i=>i.sev===2||i.fresh||i.growing),slow=sorted.filter(i=>!look.includes(i));
+  // Several reports at the same spot (same road, direction and closest camera) become one card.
+  const groups=new Map();
+  for(const i of sorted){const nc=nearestCam(t,i.road,i.head,travelDir(t,dir,i.road));const k=`${i.road}|${i.dir}|${nc?nc.c.key:i.pos.toFixed(2)}`;
+   if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
+  const prim=[];for(const g of groups.values()){g.sort((a,b)=>b.score-a.score);const top=g[0];top.alsoHere=g.slice(1);
+   top.sev=Math.max(...g.map(x=>x.sev));top.fresh=g.some(x=>x.fresh);top.growing=g.some(x=>x.growing);prim.push(top);}
+  const look=prim.filter(i=>i.sev===2||i.fresh||i.growing),slow=prim.filter(i=>!look.includes(i));
   if(!sorted.length)list.append(el('p',{text:'No problems that matter in your direction right now.'}));
   if(look.length){list.append(el('h3',{class:'grouphead',text:'Needs a look: big, new or getting worse'}));for(const i of look)list.append(incCard(t,dir,i));}
   if(slow.length){list.append(el('h3',{class:'grouphead',text:look.length?'Other slowdowns':'Slowdowns'}));for(const i of slow)list.append(incCard(t,dir,i));}
@@ -623,6 +633,8 @@ function incCard(t,dir,i,otherSide){
  if(i.ageMin!=null)facts.push(`started ${ago(i.ageMin)}`);
  if(isFinite(i.lastRep))facts.push(`last report ${ago(Math.round((Date.now()-i.lastRep)/60000))}`);
  card.append(el('div',{class:'facts',text:facts.join(' · ')}));
+ if(i.alsoHere&&i.alsoHere.length&&!otherSide){
+  card.append(el('div',{class:'facts',style:'margin-top:6px',text:`Also reported here (${i.alsoHere.length}): `+i.alsoHere.map(x=>[(x.closed?'Road closed':CAT[x.cat]||'Incident'),x.delayMin?`≈ ${x.delayMin} min`:'',x.ageMin!=null?`started ${ago(x.ageMin)}`:''].filter(Boolean).join(', ')).join(' · ')}));}
  const row=el('div',{class:'camrow'});
  if(near){row.append(thumb(near.c,(near.match||!near.c.dir?'At the problem · ':'At the problem (listed as pointing '+DIRWORD[near.c.dir]+') · ')+near.c.desc));}
  if(i.lenMi>=1){const back=nearestCam(t,i.road,i.tail,otherSide?i.dir:want);if(back&&(!near||back.c.key!==near.c.key))row.append(thumb(back.c,'Back of the backup · '+back.c.desc));}
